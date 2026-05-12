@@ -1,0 +1,17 @@
+node_modules
+.next
+.next-dev
+.next-open
+.pnpm-store
+tsconfig.tsbuildinfo
+.env*.local
+*.log
+.DS_Store
+**/.DS_Store
+
+# Local backups / generated artifacts
+lyric-slide-studio-app/
+lyric-slide-studio-mvp/
+*.zip
+marketing-video/
+screenshots/
