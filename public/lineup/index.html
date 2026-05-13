@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Show Lineup Builder</title>
-    <link rel="stylesheet" href="./styles.css?v=106" />
+    <link rel="stylesheet" href="./styles.css?v=107" />
   </head>
   <body>
     <main class="app-shell">
@@ -45,6 +45,10 @@
                   <button class="ghost-button top-icon-button" id="settingsMenuButton" aria-label="Settings" title="Settings">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.39 1.08V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8.6 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.08-.39H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8.6a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6A1.65 1.65 0 0 0 10.39 3V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15.4 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.35.56.6 1 .6H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
                     <span>Settings</span>
+                  </button>
+                  <button class="ghost-button top-icon-button" id="accountMenuButton" aria-label="Account sync" title="Account sync">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 17.5A4.5 4.5 0 0 0 15.5 13h-7A4.5 4.5 0 0 0 4 17.5"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span>Account</span>
                   </button>
                 </div>
               </details>
@@ -398,6 +402,63 @@
       </form>
     </dialog>
 
+    <dialog id="accountDialog" class="song-dialog utility-dialog">
+      <form method="dialog" id="accountForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h2 id="accountDialogTitle">Sync</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="Close" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <p class="utility-copy">Use this only when you want the same songs, lineups, and slides on another device.</p>
+        <div id="accountSignedOut" class="account-sync-panel">
+          <label>
+            <span>Email</span>
+            <input id="accountEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="accountPassword" type="password" autocomplete="current-password" />
+          </label>
+          <div class="dialog-actions compact">
+            <span></span>
+            <span></span>
+            <button class="ghost-button" type="button" id="accountCreateButton">Create</button>
+            <button class="primary-button" type="submit">Sign in</button>
+          </div>
+        </div>
+        <div id="accountSignedIn" class="account-sync-panel" hidden>
+          <div class="sync-status-card">
+            <strong id="accountEmailLabel">Signed in</strong>
+            <small>Cloud sync is available for this browser.</small>
+          </div>
+          <button class="settings-action-button" type="button" id="accountSaveCloudButton">
+            <span class="settings-action-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </span>
+            <span>
+              <strong>Save this device to cloud</strong>
+              <small>Uploads the current library and lineups</small>
+            </span>
+          </button>
+          <button class="settings-action-button" type="button" id="accountLoadCloudButton">
+            <span class="settings-action-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 20v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M21 4v5h-5"/></svg>
+            </span>
+            <span>
+              <strong>Load cloud on this device</strong>
+              <small>Replaces this browser with your cloud copy</small>
+            </span>
+          </button>
+          <button class="ghost-button" type="button" id="accountSignOutButton">Sign out</button>
+        </div>
+        <p id="accountSyncMessage" class="sync-note"></p>
+      </form>
+    </dialog>
+
     <dialog id="exportDialog" class="export-dialog">
       <div class="export-dialog-inner">
         <div class="dialog-header">
@@ -557,6 +618,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=106"></script>
+    <script src="./app.js?v=107"></script>
   </body>
 </html>

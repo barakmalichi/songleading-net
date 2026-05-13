@@ -1768,6 +1768,34 @@ body.is-pointer-dragging * {
   line-height: 1.35;
 }
 
+.account-sync-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.account-sync-panel[hidden] {
+  display: none;
+}
+
+.sync-status-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: rgba(91, 146, 255, 0.12);
+}
+
+.sync-status-card strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.sync-status-card small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .utility-dialog {
   width: min(620px, calc(100vw - 28px));
 }
@@ -2623,7 +2651,7 @@ body.is-pointer-dragging * {
 
 .export-chart-labels {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 70px 54px;
+  grid-template-columns: 42px minmax(0, 1fr) 78px 62px;
   margin-top: 8px;
   border-bottom: 2px solid #111;
   color: #444;
@@ -2644,7 +2672,7 @@ body.is-pointer-dragging * {
 
 .export-sheet-line {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 70px 54px;
+  grid-template-columns: 42px minmax(0, 1fr) 78px 62px;
   align-items: center;
   min-height: var(--export-row-height);
   break-inside: avoid;

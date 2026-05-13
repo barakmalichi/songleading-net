@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lyric Slide Studio",
-  description: "Create clean lyric slides for worship, camp, teaching, and events."
+  title: "Songleading",
+  description: "Build show lineups, stage exports, and lyric slides in one workspace."
 };
 
 export default function RootLayout({

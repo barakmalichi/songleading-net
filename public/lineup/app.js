@@ -9,6 +9,8 @@ const minorKeys = majorKeys.map((key) => `${key}m`);
 const keys = [...majorKeys, ...minorKeys];
 const capoOptions = ["", "Capo 1", "Capo 2", "Capo 3", "Capo 4", "Capo 5", "Capo 6", "Capo 7"];
 const storageKey = "show-lineup-builder-state";
+const cloudAuthStorageKey = "songleading-auth-session:v1";
+const studioStorageKey = "lyric-slide-studio:v1";
 const themeStorageKey = "show-lineup-builder-theme";
 const skinStorageKey = "show-lineup-builder-skin";
 const bankWidthStorageKey = "show-lineup-builder-bank-width";
@@ -50,6 +52,7 @@ const els = {
   exportButton: document.querySelector("#exportButton"),
   shareButton: document.querySelector("#shareButton"),
   settingsMenuButton: document.querySelector("#settingsMenuButton"),
+  accountMenuButton: document.querySelector("#accountMenuButton"),
   categoryFilters: document.querySelector("#categoryFilters"),
   songBankList: document.querySelector("#songBankList"),
   songSearch: document.querySelector("#songSearch"),
@@ -103,6 +106,19 @@ const els = {
   settingsThemeText: document.querySelector("#settingsThemeText"),
   settingsBackupButton: document.querySelector("#settingsBackupButton"),
   settingsRestoreButton: document.querySelector("#settingsRestoreButton"),
+  accountDialog: document.querySelector("#accountDialog"),
+  accountForm: document.querySelector("#accountForm"),
+  accountDialogTitle: document.querySelector("#accountDialogTitle"),
+  accountSignedOut: document.querySelector("#accountSignedOut"),
+  accountSignedIn: document.querySelector("#accountSignedIn"),
+  accountEmail: document.querySelector("#accountEmail"),
+  accountPassword: document.querySelector("#accountPassword"),
+  accountCreateButton: document.querySelector("#accountCreateButton"),
+  accountEmailLabel: document.querySelector("#accountEmailLabel"),
+  accountSaveCloudButton: document.querySelector("#accountSaveCloudButton"),
+  accountLoadCloudButton: document.querySelector("#accountLoadCloudButton"),
+  accountSignOutButton: document.querySelector("#accountSignOutButton"),
+  accountSyncMessage: document.querySelector("#accountSyncMessage"),
   exportDialog: document.querySelector("#exportDialog"),
   exportPreview: document.querySelector("#exportPreview"),
   exportCreditsToggle: document.querySelector("#exportCreditsToggle"),
@@ -272,6 +288,162 @@ function saveState() {
     localStorage.setItem(storageKey, JSON.stringify(state));
   } catch (error) {
     console.warn("Lineup could not be stored locally.", error);
+  }
+  queueLineupCloudSave();
+}
+
+function getCloudSession() {
+  try {
+    const raw = localStorage.getItem(cloudAuthStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.access_token ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCloudSession(session) {
+  try {
+    if (!session) {
+      localStorage.removeItem(cloudAuthStorageKey);
+      return;
+    }
+    localStorage.setItem(cloudAuthStorageKey, JSON.stringify(session));
+  } catch {}
+}
+
+async function cloudRequest(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      "content-type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.msg || "Cloud sync failed.");
+  return data;
+}
+
+async function getValidCloudSession() {
+  const session = getCloudSession();
+  if (!session) return null;
+  const expiry = session.expires_at ? session.expires_at * 1000 : 0;
+  if (!expiry || expiry > Date.now() + 60_000 || !session.refresh_token) return session;
+  const refreshed = await cloudRequest("/api/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  });
+  setCloudSession(refreshed);
+  return refreshed;
+}
+
+async function saveCurrentWorkspaceToCloud() {
+  const session = await getValidCloudSession();
+  if (!session) throw new Error("Please sign in first.");
+  let studioData;
+  try {
+    const rawStudio = localStorage.getItem(studioStorageKey);
+    studioData = rawStudio ? JSON.parse(rawStudio) : undefined;
+  } catch {
+    studioData = undefined;
+  }
+  return cloudRequest("/api/workspace", {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ lineupState: state, studioData }),
+  });
+}
+
+async function loadCloudWorkspaceToDevice() {
+  const session = await getValidCloudSession();
+  if (!session) throw new Error("Please sign in first.");
+  const workspace = await cloudRequest("/api/workspace", {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (workspace.lineupState) {
+    state = normalizeState(workspace.lineupState);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+  if (workspace.studioData) {
+    localStorage.setItem(studioStorageKey, JSON.stringify(workspace.studioData));
+  }
+  render();
+  return workspace;
+}
+
+let lineupCloudTimer = null;
+
+function queueLineupCloudSave() {
+  if (!getCloudSession()) return;
+  window.clearTimeout(lineupCloudTimer);
+  lineupCloudTimer = window.setTimeout(() => {
+    saveCurrentWorkspaceToCloud().catch((error) => {
+      console.warn("Lineup cloud sync failed.", error);
+    });
+  }, 900);
+}
+
+function updateAccountDialog(message = "") {
+  const session = getCloudSession();
+  if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
+  if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
+  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : "Sign in";
+  if (els.accountEmailLabel) {
+    els.accountEmailLabel.textContent = session?.user?.email || els.accountEmail?.value || "Signed in";
+  }
+  if (els.accountSyncMessage) els.accountSyncMessage.textContent = message;
+}
+
+function openAccountDialog() {
+  const session = getCloudSession();
+  if (session?.user?.email && els.accountEmail) els.accountEmail.value = session.user.email;
+  if (els.accountPassword) els.accountPassword.value = "";
+  updateAccountDialog();
+  openDialog(els.accountDialog);
+}
+
+async function signInFromAccountDialog(event) {
+  event.preventDefault();
+  updateAccountDialog("Signing in...");
+  try {
+    const session = await cloudRequest("/api/auth/sign-in", {
+      method: "POST",
+      body: JSON.stringify({
+        email: els.accountEmail.value.trim(),
+        password: els.accountPassword.value,
+      }),
+    });
+    if (!session?.access_token) throw new Error("Could not sign in.");
+    setCloudSession(session);
+    await saveCurrentWorkspaceToCloud();
+    updateAccountDialog("Signed in. This device was saved to your account.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not sign in.");
+  }
+}
+
+async function createAccountFromDialog() {
+  updateAccountDialog("Creating account...");
+  try {
+    const session = await cloudRequest("/api/auth/sign-up", {
+      method: "POST",
+      body: JSON.stringify({
+        email: els.accountEmail.value.trim(),
+        password: els.accountPassword.value,
+      }),
+    });
+    if (!session?.access_token) {
+      setCloudSession(null);
+      updateAccountDialog("Account created. Check your email, then sign in.");
+      return;
+    }
+    setCloudSession(session);
+    await saveCurrentWorkspaceToCloud();
+    updateAccountDialog("Account created. This device was saved to your account.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not create account.");
   }
 }
 
@@ -1481,8 +1653,8 @@ function drawPdfCanvas(context, page, items, includeCredits, includeRealKey, ori
 }
 
 function drawPdfLabels(context, x, y, width, includeRealKey) {
-  const keyWidth = 30;
-  const capoWidth = 36;
+  const keyWidth = 36;
+  const capoWidth = 46;
   const numberWidth = 42;
   const realKeyWidth = includeRealKey ? 44 : 0;
   context.save();
@@ -1504,8 +1676,8 @@ function drawPdfLabels(context, x, y, width, includeRealKey) {
 }
 
 function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includeRealKey, orientation) {
-  const keyWidth = 30;
-  const capoWidth = 36;
+  const keyWidth = 36;
+  const capoWidth = 46;
   const numberWidth = 42;
   const realKeyWidth = includeRealKey ? 44 : 0;
   const lineHeight = item.type === "note" ? metrics.noteRowHeight : metrics.rowHeight;
@@ -1791,8 +1963,8 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
   const fontSize = metrics.fontSize;
   const exportDate = formatExportDate(state.show.date);
   const chartColumns = includeRealKey
-    ? "42px minmax(0, 1fr) 42px 34px 48px"
-    : "42px minmax(0, 1fr) 42px 34px";
+    ? "42px minmax(0, 1fr) 50px 42px 48px"
+    : "42px minmax(0, 1fr) 50px 42px";
   const rows = items
     .map((item) => item.type === "note" ? `
       <tr class="note">
@@ -2402,6 +2574,34 @@ function bindEvents() {
   els.settingsMenuButton.addEventListener("click", () => {
     els.headerMenu.open = false;
     openSettingsDialog();
+  });
+  els.accountMenuButton?.addEventListener("click", () => {
+    els.headerMenu.open = false;
+    openAccountDialog();
+  });
+  els.accountForm?.addEventListener("submit", signInFromAccountDialog);
+  els.accountCreateButton?.addEventListener("click", createAccountFromDialog);
+  els.accountSaveCloudButton?.addEventListener("click", async () => {
+    updateAccountDialog("Saving...");
+    try {
+      await saveCurrentWorkspaceToCloud();
+      updateAccountDialog("Saved this device to your account.");
+    } catch (error) {
+      updateAccountDialog(error instanceof Error ? error.message : "Could not save to cloud.");
+    }
+  });
+  els.accountLoadCloudButton?.addEventListener("click", async () => {
+    updateAccountDialog("Loading...");
+    try {
+      await loadCloudWorkspaceToDevice();
+      updateAccountDialog("Cloud workspace loaded on this device.");
+    } catch (error) {
+      updateAccountDialog(error instanceof Error ? error.message : "Could not load cloud workspace.");
+    }
+  });
+  els.accountSignOutButton?.addEventListener("click", () => {
+    setCloudSession(null);
+    updateAccountDialog("Signed out.");
   });
   els.copyShareButton.addEventListener("click", copyShareLink);
   els.downloadLineupFileButton.addEventListener("click", downloadLineupFile);
