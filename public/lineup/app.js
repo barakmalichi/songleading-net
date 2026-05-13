@@ -31,9 +31,12 @@ let draggedBankSongId = null;
 let quickAddRows = [];
 let sidePanelMode = "library";
 let accountMode = "sign-in";
+let slidePreviewOpen = false;
+let activeSlidePreviewIndex = 0;
 
 const els = {
   appShell: document.querySelector(".app-shell"),
+  showPanel: document.querySelector(".show-panel"),
   bankPanel: document.querySelector(".bank-panel"),
   panelResizer: document.querySelector("#panelResizer"),
   showName: document.querySelector("#showName"),
@@ -55,6 +58,13 @@ const els = {
   renameShowButton: document.querySelector("#renameShowButton"),
   exportButton: document.querySelector("#exportButton"),
   exportSlidesButton: document.querySelector("#exportSlidesButton"),
+  slidePreviewToggle: document.querySelector("#slidePreviewToggle"),
+  slidePreviewPanel: document.querySelector("#slidePreviewPanel"),
+  closeSlidePreviewButton: document.querySelector("#closeSlidePreviewButton"),
+  slidePreviewStage: document.querySelector("#slidePreviewStage"),
+  slidePreviewCount: document.querySelector("#slidePreviewCount"),
+  prevSlidePreviewButton: document.querySelector("#prevSlidePreviewButton"),
+  nextSlidePreviewButton: document.querySelector("#nextSlidePreviewButton"),
   shareButton: document.querySelector("#shareButton"),
   settingsMenuButton: document.querySelector("#settingsMenuButton"),
   accountMenuButton: document.querySelector("#accountMenuButton"),
@@ -768,6 +778,60 @@ function buildLineupSlideDeck() {
   return slides;
 }
 
+function setSlidePreviewOpen(open) {
+  slidePreviewOpen = Boolean(open);
+  els.showPanel?.classList.toggle("slide-preview-open", slidePreviewOpen);
+  if (els.slidePreviewPanel) {
+    els.slidePreviewPanel.hidden = !slidePreviewOpen;
+  }
+  if (els.slidePreviewToggle) {
+    els.slidePreviewToggle.classList.toggle("is-active", slidePreviewOpen);
+    els.slidePreviewToggle.setAttribute("aria-pressed", String(slidePreviewOpen));
+    els.slidePreviewToggle.title = slidePreviewOpen ? "Hide slide preview" : "Show slide preview";
+    els.slidePreviewToggle.setAttribute("aria-label", slidePreviewOpen ? "Hide slide preview" : "Show slide preview");
+  }
+  if (slidePreviewOpen) renderSlidePreview();
+}
+
+function renderSlidePreview() {
+  if (!els.slidePreviewStage) return;
+  const slides = buildLineupSlideDeck();
+  const total = slides.length;
+  activeSlidePreviewIndex = Math.max(0, Math.min(activeSlidePreviewIndex, Math.max(total - 1, 0)));
+
+  if (!total) {
+    els.slidePreviewStage.innerHTML = `
+      <div class="mini-slide empty">
+        <strong>No slides yet</strong>
+        <div class="mini-slide-lines">
+          <span>Add songs to this setlist, then connect slides from the Slides button.</span>
+        </div>
+      </div>
+    `;
+    if (els.slidePreviewCount) els.slidePreviewCount.textContent = "0 / 0";
+    if (els.prevSlidePreviewButton) els.prevSlidePreviewButton.disabled = true;
+    if (els.nextSlidePreviewButton) els.nextSlidePreviewButton.disabled = true;
+    return;
+  }
+
+  const slide = slides[activeSlidePreviewIndex];
+  const kind = ["note", "missing"].includes(slide.kind) ? slide.kind : "lyrics";
+  const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
+  els.slidePreviewStage.innerHTML = `
+    <div class="mini-slide ${kind}">
+      <div class="mini-slide-meta">${escapeHtml(slide.meta || "")}</div>
+      <strong>${escapeHtml(slide.title || "Slide")}</strong>
+      <div class="mini-slide-lines">
+        ${lines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+      </div>
+      <small>Created with LINEUP · Songleading.net</small>
+    </div>
+  `;
+  if (els.slidePreviewCount) els.slidePreviewCount.textContent = `${activeSlidePreviewIndex + 1} / ${total}`;
+  if (els.prevSlidePreviewButton) els.prevSlidePreviewButton.disabled = activeSlidePreviewIndex <= 0;
+  if (els.nextSlidePreviewButton) els.nextSlidePreviewButton.disabled = activeSlidePreviewIndex >= total - 1;
+}
+
 function slidesExportThemeCss(theme = {}) {
   if (theme.image) {
     return `.slide { background: linear-gradient(rgba(3,7,18,.56), rgba(3,7,18,.66)), url("${theme.image}") center / cover no-repeat; }`;
@@ -1069,6 +1133,7 @@ function render() {
   renderFilters();
   renderLineup();
   renderSongBank();
+  if (slidePreviewOpen) renderSlidePreview();
 }
 
 function renderSavedShows() {
@@ -3108,6 +3173,20 @@ function bindEvents() {
     event.preventDefault();
     els.headerMenu.open = false;
     openSlidesExportDialog();
+  });
+  els.slidePreviewToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    els.headerMenu.open = false;
+    setSlidePreviewOpen(!slidePreviewOpen);
+  });
+  els.closeSlidePreviewButton?.addEventListener("click", () => setSlidePreviewOpen(false));
+  els.prevSlidePreviewButton?.addEventListener("click", () => {
+    activeSlidePreviewIndex -= 1;
+    renderSlidePreview();
+  });
+  els.nextSlidePreviewButton?.addEventListener("click", () => {
+    activeSlidePreviewIndex += 1;
+    renderSlidePreview();
   });
   els.slidesExportForm?.addEventListener("submit", submitSlidesExport);
   document.querySelectorAll("input[name='slidesExportTheme']").forEach((input) => {

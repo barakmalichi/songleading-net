@@ -24,6 +24,8 @@ const useCases = [
   "Other"
 ];
 
+const ADMIN_EMAIL = "barakmalichi@gmail.com";
+
 export function AuthButton() {
   const [mode, setMode] = useState<Mode>("closed");
   const [session, setSession] = useState<CloudSession | null>(null);
@@ -152,6 +154,14 @@ export function AuthButton() {
           {session ? <Cloud size={16} /> : <LogIn size={16} />}
           {session ? "Account" : "Sign in"}
         </button>
+        {session?.user?.email?.toLowerCase() === ADMIN_EMAIL ? (
+          <a
+            href="/admin"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
+          >
+            Admin
+          </a>
+        ) : null}
       </span>
 
       {mode !== "closed" ? (

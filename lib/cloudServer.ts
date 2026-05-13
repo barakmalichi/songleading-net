@@ -3,6 +3,13 @@ type SupabaseUser = {
   email?: string;
 };
 
+type ContactMessagePayload = {
+  name?: string;
+  email?: string;
+  topic: string;
+  message: string;
+};
+
 export type WorkspacePayload = {
   lineupState?: unknown;
   studioData?: unknown;
@@ -10,6 +17,7 @@ export type WorkspacePayload = {
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export function cloudIsConfigured() {
   return Boolean(supabaseUrl && supabaseAnonKey);
@@ -19,6 +27,17 @@ function jsonHeaders(token?: string) {
   return {
     apikey: supabaseAnonKey || "",
     authorization: token ? `Bearer ${token}` : `Bearer ${supabaseAnonKey || ""}`,
+    "content-type": "application/json"
+  };
+}
+
+function serviceHeaders() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Admin storage is not configured yet. Add SUPABASE_SERVICE_ROLE_KEY in Vercel.");
+  }
+  return {
+    apikey: supabaseServiceKey,
+    authorization: `Bearer ${supabaseServiceKey}`,
     "content-type": "application/json"
   };
 }
@@ -100,4 +119,59 @@ export async function upsertWorkspace(token: string, userId: string, payload: Wo
 
   const rows = (await response.json().catch(() => [])) as unknown[];
   return rows[0] || next;
+}
+
+export async function insertContactMessage(payload: ContactMessagePayload) {
+  if (!cloudIsConfigured()) throw new Error("Cloud sync is not configured yet.");
+  const response = await fetch(`${supabaseUrl}/rest/v1/contact_messages`, {
+    method: "POST",
+    headers: {
+      ...serviceHeaders(),
+      prefer: "return=representation"
+    },
+    body: JSON.stringify({
+      name: payload.name || "",
+      email: payload.email || "",
+      topic: payload.topic,
+      message: payload.message,
+      created_at: new Date().toISOString()
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(details || "Could not save the message.");
+  }
+
+  const rows = (await response.json().catch(() => [])) as unknown[];
+  return rows[0] || null;
+}
+
+async function serviceGet(path: string) {
+  const response = await fetch(`${supabaseUrl}${path}`, {
+    headers: serviceHeaders(),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(details || "Could not load admin data.");
+  }
+  return response.json();
+}
+
+export async function getAdminDashboard() {
+  if (!cloudIsConfigured()) throw new Error("Cloud sync is not configured yet.");
+
+  const [usersPayload, contacts, workspaces] = await Promise.all([
+    serviceGet("/auth/v1/admin/users?per_page=100&page=1"),
+    serviceGet("/rest/v1/contact_messages?select=*&order=created_at.desc&limit=100").catch(() => []),
+    serviceGet("/rest/v1/user_workspaces?select=user_id").catch(() => [])
+  ]);
+
+  const users = Array.isArray(usersPayload?.users) ? usersPayload.users : [];
+  return {
+    users,
+    contacts: Array.isArray(contacts) ? contacts : [],
+    workspaceCount: Array.isArray(workspaces) ? workspaces.length : 0
+  };
 }

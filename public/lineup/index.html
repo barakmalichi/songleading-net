@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lineup by Barak Malichi</title>
-    <link rel="stylesheet" href="./styles.css?v=110" />
+    <link rel="stylesheet" href="./styles.css?v=112" />
   </head>
   <body>
     <main class="app-shell">
@@ -29,6 +29,9 @@
               </button>
               <button class="ghost-button top-icon-button" id="exportSlidesButton" aria-label="Export lineup slides" title="Export lineup slides">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/><path d="M15 9l3 3 3-3"/><path d="M18 5v7"/></svg>
+              </button>
+              <button class="ghost-button top-icon-button" id="slidePreviewToggle" aria-label="Show slide preview" title="Show slide preview">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/><path d="M8 9h8"/><path d="M8 12h5"/></svg>
               </button>
               <details class="header-menu" id="headerMenu">
                 <summary class="ghost-button top-icon-button" aria-label="More show actions" title="More show actions">
@@ -81,6 +84,27 @@
             </button>
           </div>
         </div>
+        <aside id="slidePreviewPanel" class="slide-preview-panel" aria-label="Slideshow preview" hidden>
+          <header class="slide-preview-header">
+            <div>
+              <p class="eyebrow">Slides</p>
+              <h2>Preview</h2>
+            </div>
+            <button class="icon-button" id="closeSlidePreviewButton" aria-label="Close slide preview" title="Close slide preview">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </header>
+          <div id="slidePreviewStage" class="slide-preview-stage"></div>
+          <div class="slide-preview-controls">
+            <button class="icon-button" id="prevSlidePreviewButton" aria-label="Previous slide" title="Previous slide">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span id="slidePreviewCount">0 / 0</span>
+            <button class="icon-button" id="nextSlidePreviewButton" aria-label="Next slide" title="Next slide">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </aside>
         <a class="home-link-bottom" id="homeButton" href="/" aria-label="Back to Songleading.net" title="Back to Songleading.net">Songleading.net</a>
       </section>
 
@@ -680,7 +704,7 @@
         <div class="dialog-header">
           <div>
             <p class="eyebrow">Start</p>
-            <h2>Choose a setlist</h2>
+            <h2>What do you want to do?</h2>
           </div>
         </div>
         <div class="start-choice-grid">
@@ -744,6 +768,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=110"></script>
+    <script src="./app.js?v=112"></script>
   </body>
 </html>

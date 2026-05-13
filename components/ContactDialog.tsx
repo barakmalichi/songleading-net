@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Mail, Send, X } from "lucide-react";
 
 const contactTopics = [
@@ -18,18 +18,31 @@ export function ContactDialog() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const mailto = useMemo(() => {
-    const subject = `Songleading.net contact: ${topic}`;
-    const body = [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      `Topic: ${topic}`,
-      "",
-      message
-    ].join("\n");
-    return `mailto:barakmalichi@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }, [email, message, name, topic]);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("");
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, email, topic, message })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Could not send message.");
+      setName("");
+      setEmail("");
+      setMessage("");
+      setStatus("Message sent.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not send message.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -53,7 +66,7 @@ export function ContactDialog() {
                 <X size={20} />
               </button>
             </header>
-            <div className="mt-5 grid gap-3">
+            <form onSubmit={submit} className="mt-5 grid gap-3">
               <label className="grid gap-1 text-sm font-bold text-slate-600">
                 Topic
                 <select value={topic} onChange={(event) => setTopic(event.target.value)} className="rounded-xl border border-slate-200 px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400">
@@ -74,16 +87,16 @@ export function ContactDialog() {
                 Message
                 <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={5} className="rounded-xl border border-slate-200 px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" />
               </label>
-              <a
-                href={mailto}
-                onClick={() => setOpen(false)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-700"
+              <button
+                type="submit"
+                disabled={busy || !message.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-700 disabled:opacity-60"
               >
-                Send message
+                {busy ? "Sending..." : "Send message"}
                 <Send size={17} />
-              </a>
-              <p className="text-xs font-bold leading-5 text-slate-500">This opens your email app with the message prepared.</p>
-            </div>
+              </button>
+              {status ? <p className="text-sm font-black leading-5 text-slate-600">{status}</p> : null}
+            </form>
           </section>
         </div>
       ) : null}
