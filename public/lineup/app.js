@@ -51,6 +51,7 @@ const els = {
   saveLineupButton: document.querySelector("#saveLineupButton"),
   renameShowButton: document.querySelector("#renameShowButton"),
   exportButton: document.querySelector("#exportButton"),
+  exportSlidesButton: document.querySelector("#exportSlidesButton"),
   shareButton: document.querySelector("#shareButton"),
   settingsMenuButton: document.querySelector("#settingsMenuButton"),
   accountMenuButton: document.querySelector("#accountMenuButton"),
@@ -563,6 +564,206 @@ function openSlidesForBankSong(songId) {
   const item = addSongToLineup(songId, false);
   if (!item) return;
   openSlidesForLineup(item.id);
+}
+
+function loadStudioData() {
+  try {
+    const raw = localStorage.getItem(studioStorageKey);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      songs: Array.isArray(parsed?.songs) ? parsed.songs : [],
+      sessions: Array.isArray(parsed?.sessions) ? parsed.sessions : [],
+    };
+  } catch {
+    return { songs: [], sessions: [] };
+  }
+}
+
+function findSlideSongForLineupItem(item, song, studioSongs) {
+  const linkedId = item?.slideSongId || song?.slideSongId || "";
+  if (linkedId) {
+    const linked = studioSongs.find((candidate) => candidate.id === linkedId);
+    if (linked) return linked;
+  }
+  return studioSongs.find((candidate) => candidate.title?.trim().toLowerCase() === song?.title?.trim().toLowerCase()) || null;
+}
+
+function flattenStudioFlow(sections = [], flow = []) {
+  const sortedSections = [...sections].filter((section) => !section.hidden).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const selectedFlow = Array.isArray(flow) && flow.length
+    ? flow
+    : sortedSections.map((section, index) => ({
+        id: `export-instance-${index}`,
+        sectionId: section.id,
+        label: section.name,
+        selectedLineIndexes: section.lines?.map((_, lineIndex) => lineIndex) || [],
+      }));
+
+  return selectedFlow.flatMap((instance) => {
+    const section = sections.find((candidate) => candidate.id === instance.sectionId);
+    if (!section) return [];
+    const indexes = Array.isArray(instance.selectedLineIndexes) && instance.selectedLineIndexes.length
+      ? instance.selectedLineIndexes
+      : section.lines?.map((_, lineIndex) => lineIndex) || [];
+    return indexes
+      .filter((lineIndex) => section.lines?.[lineIndex] !== undefined)
+      .map((lineIndex) => ({
+        id: `${instance.id}:${lineIndex}`,
+        text: section.lines[lineIndex],
+        sectionName: section.name || instance.label || "",
+        sectionId: section.id,
+        lineIndex,
+      }));
+  });
+}
+
+function buildSlidesFromStudioSong(slideSong, flowId = "") {
+  const sections = Array.isArray(slideSong?.sections) ? slideSong.sections : [];
+  const savedFlows = Array.isArray(slideSong?.savedFlows) ? slideSong.savedFlows : [];
+  const flow = savedFlows.find((candidate) => candidate.id === flowId) || savedFlows[0] || null;
+  const lines = flattenStudioFlow(sections, flow?.selectedSectionInstances || []);
+  const manualBreaks = Array.isArray(flow?.slideBreaks) ? flow.slideBreaks : [];
+  const slides = [];
+  let current = [];
+
+  lines.forEach((line, index) => {
+    const previous = lines[index - 1];
+    const section = sections.find((candidate) => candidate.id === previous?.sectionId);
+    const naturalBreak = Boolean(section?.lineBreaksAfter?.includes(previous?.lineIndex));
+    const forcedBreak = manualBreaks.includes(line.id);
+    const sectionChanged = previous && previous.sectionId !== line.sectionId;
+    const textCrowded = previous && previous.text.length + line.text.length > 82;
+    if (current.length && (forcedBreak || naturalBreak || current.length >= 4 || (current.length >= 2 && (sectionChanged || textCrowded)))) {
+      slides.push(current);
+      current = [];
+    }
+    current.push(line);
+  });
+  if (current.length) slides.push(current);
+
+  return slides.map((slideLines, index) => ({
+    id: `${slideSong.id || "song"}-${index}`,
+    title: slideSong.title || "Untitled",
+    section: Array.from(new Set(slideLines.map((line) => line.sectionName).filter(Boolean))).join(" / "),
+    lines: slideLines.map((line) => line.text),
+  }));
+}
+
+function buildLineupSlideDeck() {
+  const studioData = loadStudioData();
+  const slides = [];
+  state.lineup.forEach((item, index) => {
+    if (item.type === "note") {
+      if (item.text?.trim()) {
+        slides.push({
+          kind: "note",
+          title: "Note",
+          lines: [item.text.trim()],
+          meta: `${index + 1}`,
+        });
+      }
+      return;
+    }
+
+    const song = state.songs.find((candidate) => candidate.id === item.songId);
+    if (!song) return;
+    const slideSong = findSlideSongForLineupItem(item, song, studioData.songs);
+    const songSlides = slideSong ? buildSlidesFromStudioSong(slideSong, item.slideFlowId) : [];
+
+    if (songSlides.length) {
+      songSlides.forEach((slide, slideIndex) => {
+        slides.push({
+          ...slide,
+          kind: "lyrics",
+          meta: `${index + 1}${slide.section ? ` · ${slide.section}` : ""}${songSlides.length > 1 ? ` · ${slideIndex + 1}/${songSlides.length}` : ""}`,
+        });
+      });
+      return;
+    }
+
+    slides.push({
+      kind: "missing",
+      title: song.title,
+      lines: ["Slides not connected yet"],
+      meta: `${index + 1}`,
+    });
+  });
+  return slides;
+}
+
+function buildSlidesExportHtml(slides) {
+  const title = state.show.name || "Lineup slides";
+  const date = formatExportDate(state.show.date);
+  const slideCount = Math.max(slides.length, 1);
+  const renderedSlides = slides.length ? slides : [{
+    kind: "missing",
+    title: "No slides",
+    lines: ["Add songs with slides before exporting."],
+    meta: "",
+  }];
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)} slides</title>
+  <style>
+    :root { color-scheme: dark; --bg:#05070b; --ink:#f8fbff; --muted:#9fb0c6; --accent:#5b92ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:Inter, Arial, sans-serif; }
+    .deck-bar { position:fixed; inset:16px 16px auto; z-index:5; display:flex; justify-content:space-between; gap:16px; color:var(--muted); font-size:14px; font-weight:800; letter-spacing:.02em; pointer-events:none; }
+    .slide { min-height:100vh; display:grid; place-items:center; padding:clamp(42px, 7vw, 92px); border-bottom:1px solid rgba(255,255,255,.08); background:radial-gradient(circle at top left, rgba(91,146,255,.18), transparent 34%), #05070b; }
+    .slide.note { background:radial-gradient(circle at top left, rgba(245,181,43,.2), transparent 34%), #080704; }
+    .slide.missing { background:radial-gradient(circle at top left, rgba(165,173,178,.18), transparent 34%), #05070b; }
+    .content { width:min(1200px, 92vw); text-align:center; }
+    .meta { margin-bottom:28px; color:var(--accent); font-size:clamp(15px, 2vw, 22px); font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
+    h1 { margin:0 0 42px; font-size:clamp(46px, 8vw, 104px); line-height:.96; letter-spacing:-.03em; }
+    .lyrics { display:grid; gap:.22em; font-size:clamp(38px, 6.2vw, 86px); line-height:1.08; font-weight:900; }
+    .note .lyrics { color:#ffe1a3; font-style:italic; }
+    .missing .lyrics { color:#c9d3e2; font-size:clamp(30px, 5vw, 64px); }
+    .empty { color:var(--muted); }
+    @media print {
+      .deck-bar { display:none; }
+      .slide { min-height:100vh; page-break-after:always; break-after:page; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-bar"><span>${escapeHtml(title)}</span><span>${escapeHtml(date)} · ${slideCount} slides</span></div>
+  ${renderedSlides.map((slide, index) => `
+    <section class="slide ${escapeHtml(slide.kind || "lyrics")}">
+      <div class="content">
+        <div class="meta">${escapeHtml(slide.meta || `${index + 1} / ${slideCount}`)}</div>
+        <h1>${escapeHtml(slide.title || title)}</h1>
+        <div class="lyrics">${(slide.lines || []).map((line) => `<div>${escapeHtml(line)}</div>`).join("") || `<div class="empty">Instrumental</div>`}</div>
+      </div>
+    </section>
+  `).join("")}
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    let current = 0;
+    function go(next) {
+      current = Math.max(0, Math.min(slides.length - 1, next));
+      slides[current]?.scrollIntoView({ behavior: "smooth" });
+    }
+    document.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(event.key)) { event.preventDefault(); go(current + 1); }
+      if (["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key)) { event.preventDefault(); go(current - 1); }
+      if (event.key === "Home") go(0);
+      if (event.key === "End") go(slides.length - 1);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function exportLineupSlides() {
+  commitShowMetaFromFields();
+  const slides = buildLineupSlideDeck();
+  const html = buildSlidesExportHtml(slides);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-slides.html`, "Slides deck is ready.");
 }
 
 function tagSuggestions(excludeSongId = "") {
@@ -2651,6 +2852,12 @@ function bindEvents() {
     openExportPreview();
   });
 
+  els.exportSlidesButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    els.headerMenu.open = false;
+    exportLineupSlides();
+  });
+
   document.addEventListener("click", (event) => {
     if (!els.headerMenu?.open || els.headerMenu.contains(event.target)) return;
     els.headerMenu.open = false;
@@ -3028,6 +3235,12 @@ function bindEmergencyButtonDelegates() {
         handled();
         commitShowMetaFromFields();
         openExportPreview();
+        return;
+      }
+
+      if (control.id === "exportSlidesButton") {
+        handled();
+        exportLineupSlides();
         return;
       }
 

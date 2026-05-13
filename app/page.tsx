@@ -1,37 +1,12 @@
-import {
-  ArrowRight,
-  BookOpenText,
-  CalendarDays,
-  FileText,
-  Music2,
-  Rows3,
-} from "lucide-react";
+import { ArrowRight, BookOpenText, Rows3 } from "lucide-react";
 import { AuthButton } from "@/components/AuthButton";
 
 const tools = [
   {
-    title: "Lineup app",
+    title: "Lineups",
     description: "Build shows, add notes, set capo and keys, then export a stage sheet.",
     href: "/lineup/index.html",
     icon: Rows3,
-  },
-  {
-    title: "Slides library",
-    description: "Open saved lyric slide songs and keep presentation work close to the lineup.",
-    href: "/slides/library",
-    icon: FileText,
-  },
-  {
-    title: "Songs",
-    description: "Keep song material, keys, tags, credits, and slide links in one place.",
-    href: "/songs",
-    icon: Music2,
-  },
-  {
-    title: "Sessions",
-    description: "Plan rehearsal or service sets without turning the home page into a dashboard.",
-    href: "/sessions",
-    icon: CalendarDays,
   },
 ];
 
@@ -67,22 +42,16 @@ export default function Home() {
               Simple tools for preparing songs.
             </h1>
             <p className="mt-6 max-w-lg text-lg font-semibold leading-8 text-slate-600">
-              A quiet home for lineups, lyric slides, song notes, and the small details that make a
-              show easier to lead.
+              A quiet home for songs, show flow, stage notes, and the details that make leading
+              feel easier.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
                 href="/lineup/index.html"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
               >
-                Open lineup app
+                Open lineups
                 <ArrowRight size={17} />
-              </a>
-              <a
-                href="/slides/library"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-900 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
-              >
-                Slides library
               </a>
             </div>
           </div>
