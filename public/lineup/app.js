@@ -58,6 +58,9 @@ const els = {
   shareButton: document.querySelector("#shareButton"),
   settingsMenuButton: document.querySelector("#settingsMenuButton"),
   accountMenuButton: document.querySelector("#accountMenuButton"),
+  setlistStartDialog: document.querySelector("#setlistStartDialog"),
+  startNewSetlistButton: document.querySelector("#startNewSetlistButton"),
+  openExistingSetlistButton: document.querySelector("#openExistingSetlistButton"),
   categoryFilters: document.querySelector("#categoryFilters"),
   songBankList: document.querySelector("#songBankList"),
   songSearch: document.querySelector("#songSearch"),
@@ -1092,13 +1095,22 @@ function setSidePanelMode(mode) {
   sidePanelMode = mode === "shows" ? "shows" : "library";
   els.appShell.classList.remove("bank-collapsed");
   els.bankPanel?.classList.toggle("shows-mode", sidePanelMode === "shows");
-  els.bankPanel?.setAttribute("aria-label", sidePanelMode === "shows" ? "Saved shows" : "Song bank");
+  els.bankPanel?.setAttribute("aria-label", sidePanelMode === "shows" ? "Saved setlists" : "Song bank");
   if (els.sidePanelTitle) els.sidePanelTitle.textContent = sidePanelMode === "shows" ? "Setlists" : "Library";
   if (els.libraryView) els.libraryView.hidden = sidePanelMode !== "library";
   if (els.showsView) els.showsView.hidden = sidePanelMode !== "shows";
   if (els.newSongButton) els.newSongButton.hidden = sidePanelMode !== "library";
   if (els.quickAddButton) els.quickAddButton.hidden = sidePanelMode !== "library";
   els.showsTabButton?.classList.toggle("active", sidePanelMode === "shows");
+}
+
+function openSetlistStartDialog() {
+  if (!els.setlistStartDialog || importedSharedLineup) return;
+  openDialog(els.setlistStartDialog);
+}
+
+function closeSetlistStartDialog() {
+  closeDialog(els.setlistStartDialog);
 }
 
 function isMobileLayout() {
@@ -3334,6 +3346,15 @@ function bindCoreFallbackEvents() {
   bind(els.showsTabButton, "click", () => {
     setSidePanelMode(sidePanelMode === "shows" ? "library" : "shows");
   });
+  bind(els.startNewSetlistButton, "click", () => {
+    createNewShow();
+    setSidePanelMode("library");
+    closeSetlistStartDialog();
+  });
+  bind(els.openExistingSetlistButton, "click", () => {
+    setSidePanelMode("shows");
+    closeSetlistStartDialog();
+  });
   bind(els.themeToggle, "click", toggleTheme);
 }
 
@@ -3847,6 +3868,8 @@ function startApp() {
     if (importedSharedLineup) {
       toast("Shared lineup opened and saved here.");
       history.replaceState(null, "", window.location.href.split("#")[0]);
+    } else {
+      window.setTimeout(openSetlistStartDialog, 120);
     }
   } catch (error) {
     console.error("Could not start the lineup app.", error);
