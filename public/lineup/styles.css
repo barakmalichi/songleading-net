@@ -1553,7 +1553,8 @@ body.is-pointer-dragging * {
   font-weight: 760;
 }
 
-.banger-filter {
+.banger-filter,
+.hebrew-filter {
   display: inline-grid;
   flex: 0 0 32px;
   place-items: center;
@@ -1565,8 +1566,19 @@ body.is-pointer-dragging * {
   color: var(--amber);
 }
 
+.hebrew-filter {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
 .banger-filter.active {
   background: rgba(243, 174, 34, 0.18);
+}
+
+.hebrew-filter.active {
+  color: #ffffff;
+  background: var(--accent);
 }
 
 .banger-filter svg,
@@ -2288,12 +2300,12 @@ body.is-pointer-dragging * {
 }
 
 .song-meta-grid {
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
 }
 
 .song-small-grid {
-  grid-template-columns: 136px 112px 54px;
+  grid-template-columns: 96px 136px 112px;
   justify-content: start;
   align-items: end;
 }
@@ -2384,9 +2396,10 @@ body.is-pointer-dragging * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  width: 58px;
+  gap: 6px;
+  min-width: 72px;
   height: 42px;
+  padding: 0 12px;
   margin: 0;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -2402,21 +2415,16 @@ body.is-pointer-dragging * {
     background 140ms ease,
     box-shadow 140ms ease,
     color 140ms ease,
-    transform 140ms ease;
+  transform 140ms ease;
 }
 
-.hebrew-toggle span::after {
-  content: "";
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.7rem;
-  line-height: 1;
-  opacity: 0.58;
+.hebrew-toggle span svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  opacity: 0.78;
 }
 
 .hebrew-toggle span strong {
@@ -2431,13 +2439,6 @@ body.is-pointer-dragging * {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--green) 50%, white),
     0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent);
-}
-
-.hebrew-toggle input:checked + span::after {
-  content: "✓";
-  border-color: #071428;
-  color: #071428;
-  opacity: 1;
 }
 
 .hebrew-toggle input:focus-visible + span {
@@ -2651,18 +2652,20 @@ body.is-pointer-dragging * {
 
 .export-chart-labels {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 78px 62px;
-  margin-top: 8px;
+  grid-template-columns: 42px minmax(0, 1fr) 42px 36px;
+  align-items: center;
+  margin-top: 5px;
   border-bottom: 2px solid #111;
   color: #444;
   font-size: 12px;
   font-weight: 900;
+  line-height: 1;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .export-chart-labels span {
-  padding: 2px 7px 5px;
+  padding: 1px 7px 8px;
   text-align: center;
 }
 
@@ -2672,7 +2675,7 @@ body.is-pointer-dragging * {
 
 .export-sheet-line {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 78px 62px;
+  grid-template-columns: 42px minmax(0, 1fr) 42px 36px;
   align-items: center;
   min-height: var(--export-row-height);
   break-inside: avoid;

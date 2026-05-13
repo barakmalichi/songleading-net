@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Show Lineup Builder</title>
-    <link rel="stylesheet" href="./styles.css?v=107" />
+    <link rel="stylesheet" href="./styles.css?v=109" />
   </head>
   <body>
     <main class="app-shell">
@@ -173,12 +173,19 @@
             <input type="hidden" id="songCategory" />
             <div id="songCategoryButtons" class="category-choice-buttons" role="radiogroup" aria-label="Category"></div>
           </div>
+          <label class="hebrew-toggle" title="Song contains Hebrew">
+            <input id="songHebrew" type="checkbox" />
+            <span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+              <strong>He</strong>
+            </span>
+          </label>
+        </div>
+        <div class="form-grid song-small-grid">
           <label>
             <span>Key</span>
             <select id="songKey"></select>
           </label>
-        </div>
-        <div class="form-grid song-small-grid">
           <label>
             <span>Default capo</span>
             <select id="songCapo"></select>
@@ -187,20 +194,13 @@
             <span>Duration</span>
             <input id="songDuration" placeholder="4:20" pattern="[0-9]{1,2}:[0-5][0-9]" />
           </label>
-          <label class="hebrew-toggle" title="Song contains Hebrew">
-            <input id="songHebrew" type="checkbox" />
-            <span><strong>He</strong></span>
-          </label>
         </div>
         <label>
           <span>Credits</span>
           <input id="songCredits" maxlength="120" placeholder="Writer, artist, arranger..." />
         </label>
-        <label class="tag-field">
-          <span>Tags</span>
-          <input id="songTags" maxlength="140" placeholder="Optional: upbeat, opening, worship..." />
-          <div id="songTagSuggestions" class="tag-suggestions" aria-label="Tag suggestions"></div>
-        </label>
+        <input id="songTags" type="hidden" />
+        <div id="songTagSuggestions" class="tag-suggestions" aria-label="Tag suggestions" hidden></div>
         <label>
           <span>Notes</span>
           <textarea id="songNotes" rows="3" placeholder="Intro, ending, leader, arrangement..."></textarea>
@@ -618,6 +618,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=107"></script>
+    <script src="./app.js?v=109"></script>
   </body>
 </html>

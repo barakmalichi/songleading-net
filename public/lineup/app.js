@@ -18,8 +18,9 @@ const appVersion = 7;
 
 let importedSharedLineup = false;
 let state = safeLoadState();
-let activeCategory = "All";
+let activeCategories = new Set();
 let bangersOnly = false;
+let hebrewOnly = false;
 let searchTerm = "";
 let sortAsc = true;
 let openRowId = null;
@@ -469,13 +470,14 @@ function commitShowMetaFromFields() {
 function normalizeCategoryName(name) {
   if (name === "Session") return "Song Session";
   if (name === "Special") return "Other";
+  if (!name) return "";
   if (name === "Services" || name === "Song Session" || name === "Other") return name;
   return "Other";
 }
 
 function categoryFor(name) {
   const normalized = normalizeCategoryName(name);
-  return categories.find((category) => category.name === normalized) || categories[categories.length - 1];
+  return categories.find((category) => category.name === normalized) || { name: "", color: "#7b8794" };
 }
 
 function hasHebrewLetters(value) {
@@ -509,6 +511,14 @@ function normalizeTags(value) {
 
 function tagString(tags) {
   return normalizeTags(tags).join(", ");
+}
+
+function songMetaLabel(song) {
+  const parts = [];
+  const category = normalizeCategoryName(song?.category);
+  if (category) parts.push(category);
+  if (song?.duration) parts.push(song.duration);
+  return parts.join(" / ");
 }
 
 function slidesStatusLabel(status) {
@@ -694,16 +704,18 @@ function toggleTheme() {
 }
 
 function renderFilters() {
-  const allFilters = [{ name: "All", color: "#5b92ff" }, ...categories];
   els.categoryFilters.innerHTML = `
     <div class="filter-group" aria-label="Song type filters">
       <div class="filter-options">
-        ${allFilters
+        ${categories
           .map((category) => {
-            const active = category.name === activeCategory ? "active" : "";
+            const active = activeCategories.has(category.name) ? "active" : "";
             return `<button class="filter-chip ${active}" data-category="${category.name}" style="--chip-color:${category.color}">${category.name}</button>`;
           })
           .join("")}
+        <button class="hebrew-filter ${hebrewOnly ? "active" : ""}" type="button" data-hebrew-filter aria-label="Show Hebrew songs" title="Show Hebrew songs">
+          He
+        </button>
         <button class="banger-filter ${bangersOnly ? "active" : ""}" type="button" data-banger-filter aria-label="Show only bangers" title="Show only bangers">
           ${flameIcon()}
         </button>
@@ -740,10 +752,10 @@ function renderLineup() {
           <div class="song-title-wrap">
             <div class="song-text">
               <div class="song-name">${escapeHtml(song.title)}</div>
-              <div class="subline">
+              ${songMetaLabel(song) ? `<div class="subline">
                 ${song.banger ? `<span class="banger-mark inline" title="Banger">${flameIcon()}</span>` : ""}
-                ${normalizeCategoryName(song.category)}${song.duration ? ` / ${song.duration}` : ""}
-              </div>
+                ${escapeHtml(songMetaLabel(song))}
+              </div>` : ""}
             </div>
           </div>
           <label class="line-song-note">
@@ -805,8 +817,9 @@ function renderNoteRow(item, index) {
 function renderSongBank() {
   const librarySearch = parseLibrarySearch(searchTerm);
   const filtered = state.songs
-    .filter((song) => activeCategory === "All" || normalizeCategoryName(song.category) === activeCategory)
+    .filter((song) => !activeCategories.size || activeCategories.has(normalizeCategoryName(song.category)))
     .filter((song) => !bangersOnly || song.banger)
+    .filter((song) => !hebrewOnly || song.hebrew)
     .filter((song) => !librarySearch.hebrewOnly || song.hebrew)
     .filter((song) => {
       const haystack = `${song.title} ${normalizeCategoryName(song.category)} ${tagString(song.tags)}`.toLowerCase();
@@ -862,9 +875,10 @@ function populateFormOptions() {
 
 function setSongCategoryChoice(categoryName) {
   const category = normalizeCategoryName(categoryName);
-  els.songCategory.value = category;
+  const nextCategory = els.songCategory.value === category ? "" : category;
+  els.songCategory.value = nextCategory;
   els.songCategoryButtons.querySelectorAll("[data-song-category]").forEach((button) => {
-    const active = button.dataset.songCategory === category;
+    const active = button.dataset.songCategory === nextCategory;
     button.classList.toggle("active", active);
     button.setAttribute("aria-checked", String(active));
   });
@@ -877,7 +891,8 @@ function openSongDialog(song = null) {
   els.dialogTitle.textContent = song ? "Edit Song" : "Create New Song";
   els.deleteSongButton.hidden = !song;
   els.songTitle.value = song?.title || "";
-  setSongCategoryChoice(song?.category || "Services");
+  els.songCategory.value = "";
+  setSongCategoryChoice(song?.category || "");
   els.songKey.value = song?.key || "C";
   els.songCapo.value = song?.capo || "";
   els.songDuration.value = song?.duration || "";
@@ -991,7 +1006,7 @@ function openQuickAddDialog() {
   }, 50);
 }
 
-function makeQuickAddRow(title = "", category = activeCategory === "All" ? "Services" : activeCategory, credits = "", banger = false) {
+function makeQuickAddRow(title = "", category = [...activeCategories][0] || "Services", credits = "", banger = false) {
   return {
     id: makeId("quick"),
     title,
@@ -1620,8 +1635,8 @@ function drawPdfCanvas(context, page, items, includeCredits, includeRealKey, ori
   const rowsPerColumn = Math.ceil(items.length / metrics.columns);
   const exportDate = formatExportDate(state.show.date);
   const titleSize = orientation === "landscape" ? 34 : 30;
-  const labelY = margin + 58;
-  const lineStartY = labelY + 24;
+  const labelY = margin + titleSize + 38;
+  const lineStartY = labelY + 25;
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, page.width, page.height);
@@ -1653,14 +1668,14 @@ function drawPdfCanvas(context, page, items, includeCredits, includeRealKey, ori
 }
 
 function drawPdfLabels(context, x, y, width, includeRealKey) {
-  const keyWidth = 36;
-  const capoWidth = 46;
+  const keyWidth = 34;
+  const capoWidth = 40;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 44 : 0;
+  const realKeyWidth = includeRealKey ? 40 : 0;
   context.save();
   context.font = "900 11px Arial, Helvetica, sans-serif";
   context.fillStyle = "#444444";
-  context.textTransform = "uppercase";
+  context.textBaseline = "middle";
   context.fillText("SONG", x + numberWidth + 6, y);
   context.textAlign = "center";
   context.fillText("CAPO", x + width - realKeyWidth - keyWidth - capoWidth / 2, y);
@@ -1669,22 +1684,23 @@ function drawPdfLabels(context, x, y, width, includeRealKey) {
   context.strokeStyle = "#111111";
   context.lineWidth = 1.7;
   context.beginPath();
-  context.moveTo(x, y + 10);
-  context.lineTo(x + width, y + 10);
+  context.moveTo(x, y + 15);
+  context.lineTo(x + width, y + 15);
   context.stroke();
   context.restore();
 }
 
 function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includeRealKey, orientation) {
-  const keyWidth = 36;
-  const capoWidth = 46;
+  const keyWidth = 34;
+  const capoWidth = 40;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 44 : 0;
+  const realKeyWidth = includeRealKey ? 40 : 0;
   const lineHeight = item.type === "note" ? metrics.noteRowHeight : metrics.rowHeight;
-  const mainY = y + lineHeight * 0.55;
+  const mainY = y + lineHeight / 2;
   const titleX = x + numberWidth + 6;
   const titleWidth = width - numberWidth - capoWidth - keyWidth - realKeyWidth - 12;
   context.save();
+  context.textBaseline = "middle";
   context.strokeStyle = "#222222";
   context.lineWidth = 1.45;
 
@@ -1702,19 +1718,22 @@ function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includ
     context.textAlign = "right";
     context.fillText(item.number, x + numberWidth - 8, mainY);
     context.textAlign = "left";
+    const hasCredits = includeCredits && item.credits;
+    const titleY = hasCredits ? mainY - Math.max(4, metrics.fontSize * 0.15) : mainY;
+    const creditY = mainY + Math.max(7, metrics.fontSize * 0.30);
     const note = item.note || "";
     const noteWidth = note ? Math.min(titleWidth * 0.34, Math.max(70, context.measureText(note).width + 10)) : 0;
-    fitCanvasText(context, shortenTitle(item.title, metrics.columns, orientation), titleX, mainY, titleWidth - noteWidth - 6);
+    fitCanvasText(context, shortenTitle(item.title, metrics.columns, orientation), titleX, titleY, titleWidth - noteWidth - 6);
     if (note) {
       context.fillStyle = "#6a4a00";
       context.font = `italic 800 ${noteFontSize(metrics.fontSize, note)}px Arial, Helvetica, sans-serif`;
-      fitCanvasText(context, note, titleX + titleWidth - noteWidth, mainY, noteWidth);
+      fitCanvasText(context, note, titleX + titleWidth - noteWidth, titleY, noteWidth);
       context.fillStyle = "#111111";
     }
-    if (includeCredits && item.credits) {
+    if (hasCredits) {
       context.fillStyle = "#555555";
       context.font = `700 ${Math.max(10, Math.floor(metrics.fontSize * 0.42))}px Arial, Helvetica, sans-serif`;
-      fitCanvasText(context, item.credits, titleX, mainY + Math.max(11, metrics.fontSize * 0.36), titleWidth);
+      fitCanvasText(context, item.credits, titleX, creditY, titleWidth);
     }
     context.font = `800 ${metrics.fontSize}px Arial, Helvetica, sans-serif`;
     context.fillStyle = "#333333";
@@ -1963,8 +1982,8 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
   const fontSize = metrics.fontSize;
   const exportDate = formatExportDate(state.show.date);
   const chartColumns = includeRealKey
-    ? "42px minmax(0, 1fr) 50px 42px 48px"
-    : "42px minmax(0, 1fr) 50px 42px";
+    ? "42px minmax(0, 1fr) 42px 36px 42px"
+    : "42px minmax(0, 1fr) 42px 36px";
   const rows = items
     .map((item) => item.type === "note" ? `
       <tr class="note">
@@ -2001,8 +2020,8 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           header { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2px solid #111; padding-bottom: 7px; }
           h1 { margin: 0; font-size: ${orientation === "landscape" ? 34 : 30}px; line-height: 1; }
           .date { font-size: 20px; font-weight: 700; }
-          .chart-labels { display: grid; grid-template-columns: ${chartColumns}; margin-top: 4px; border-bottom: 2px solid #111; color: #444; text-transform: uppercase; font-size: 12px; font-weight: 900; letter-spacing: 0.03em; }
-          .chart-labels span { padding: 2px 7px 5px; text-align: center; }
+          .chart-labels { display: grid; grid-template-columns: ${chartColumns}; align-items: center; margin-top: 5px; border-bottom: 2px solid #111; color: #444; text-transform: uppercase; font-size: 12px; line-height: 1; font-weight: 900; letter-spacing: 0.03em; }
+          .chart-labels span { padding: 1px 7px 8px; text-align: center; }
           .chart-labels span:nth-child(2) { text-align: left; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; column-count: ${columns}; }
           tbody { display: block; column-count: ${columns}; column-gap: 22px; }
@@ -2010,7 +2029,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           tr.note { grid-template-columns: 42px minmax(0, 1fr); background: #f3f0e8; }
           td { padding: 1px 7px; font-size: ${fontSize}px; line-height: 1.02; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           tr.note td { font-style: italic; font-size: ${Math.max(16, fontSize - 4)}px; }
-          td.title { display: flex; flex-direction: column; justify-content: center; overflow: visible; }
+          td.title { display: flex; flex-direction: column; justify-content: center; overflow: visible; align-self: stretch; }
           .title-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; line-height: 1.04; }
           .song-title-export { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .title-main, .credits, .line-note-export { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2065,7 +2084,7 @@ function shortenTitle(title, columns = 1, orientation = "portrait") {
     .replace(/\s+/g, " ")
     .trim();
   const maxLength = columns > 1
-    ? (orientation === "landscape" ? 28 : 24)
+    ? (orientation === "landscape" ? 34 : 28)
     : (orientation === "landscape" ? 44 : 38);
   if (cleaned.length <= maxLength) return cleaned;
   const clipped = cleaned.slice(0, Math.max(8, maxLength - 1)).trimEnd();
@@ -2438,9 +2457,17 @@ function bindEvents() {
       render();
       return;
     }
+    const hebrewButton = event.target.closest("[data-hebrew-filter]");
+    if (hebrewButton) {
+      hebrewOnly = !hebrewOnly;
+      render();
+      return;
+    }
     const button = event.target.closest("[data-category]");
     if (!button) return;
-    activeCategory = button.dataset.category;
+    const category = button.dataset.category;
+    if (activeCategories.has(category)) activeCategories.delete(category);
+    else activeCategories.add(category);
     render();
   });
 
@@ -3099,7 +3126,9 @@ function bindEmergencyButtonDelegates() {
 
       if (control.matches("[data-category]")) {
         handled();
-        activeCategory = control.dataset.category;
+        const category = control.dataset.category;
+        if (activeCategories.has(category)) activeCategories.delete(category);
+        else activeCategories.add(category);
         render();
         return;
       }
@@ -3107,6 +3136,13 @@ function bindEmergencyButtonDelegates() {
       if (control.matches("[data-banger-filter]")) {
         handled();
         bangersOnly = !bangersOnly;
+        render();
+        return;
+      }
+
+      if (control.matches("[data-hebrew-filter]")) {
+        handled();
+        hebrewOnly = !hebrewOnly;
         render();
         return;
       }
