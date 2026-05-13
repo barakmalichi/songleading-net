@@ -14,7 +14,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="grid h-10 w-10 place-items-center rounded-lg bg-slate-950 text-white">
                 <Music2 size={22} />
               </span>
-              Songleading
+              <span className="grid leading-none">
+                <span>Lineup</span>
+                <span className="mt-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-slate-500">by Barak Malichi</span>
+              </span>
             </Link>
             <nav className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <Link className="rounded-lg px-3 py-2 hover:bg-white" href="/">

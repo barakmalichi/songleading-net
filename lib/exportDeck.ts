@@ -157,6 +157,15 @@ function drawSlideToCanvas(
     context.restore();
   }
 
+  context.save();
+  context.globalAlpha = 0.55;
+  context.fillStyle = design.textColor;
+  context.textAlign = "right";
+  context.font = `700 14px ${design.fontFamily}, Arial, sans-serif`;
+  context.fillText("Created with LINEUP", page.width - 18, page.height - 30);
+  context.fillText("Songleading.net", page.width - 18, page.height - 14);
+  context.restore();
+
   return canvas;
 }
 

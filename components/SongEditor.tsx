@@ -295,21 +295,47 @@ export function SongEditor({
   function saveDuplicate() {
     const now = new Date().toISOString();
     const newSongId = createId("song");
+    const sectionIds = new Map<string, string>();
+    const duplicatedSections = draft.sections.map((section) => {
+      const nextSectionId = createId("section");
+      sectionIds.set(section.id, nextSectionId);
+      return {
+        ...section,
+        id: nextSectionId,
+        songId: newSongId
+      };
+    });
+    const duplicatedFlow: SavedFlow = {
+      id: createId("flow"),
+      songId: newSongId,
+      name: `${flowName} copy`,
+      selectedSectionInstances: flow.map((instance) => ({
+        ...instance,
+        id: createId("instance"),
+        sectionId: sectionIds.get(instance.sectionId) ?? instance.sectionId
+      })),
+      selectedLines: { ...draft.savedFlows[0]?.selectedLines },
+      slideBreaks: [...slideBreaks],
+      designSettings: { ...design },
+      createdAt: now,
+      updatedAt: now
+    };
     const next = {
       ...draft,
       id: newSongId,
       title: `${draft.title} copy`,
-      sections: draft.sections.map((section) => ({
-        ...section,
-        id: createId("section"),
-        songId: newSongId
-      })),
-      savedFlows: [],
+      sections: duplicatedSections,
+      savedFlows: [duplicatedFlow],
       createdAt: now,
       updatedAt: now
     };
     upsertSong(next);
-    router.push(`/songs/${next.id}`);
+    setDraft(next);
+    setFlow(duplicatedFlow.selectedSectionInstances);
+    setFlowName(duplicatedFlow.name);
+    setSlideBreaks(duplicatedFlow.slideBreaks);
+    setLastSavedSignature(editorSignature(next, duplicatedFlow.selectedSectionInstances, duplicatedFlow.slideBreaks, design, duplicatedFlow.name));
+    onSaved?.(next, duplicatedFlow.id);
   }
 
   function addSectionToFlow(section: Section) {

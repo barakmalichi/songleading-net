@@ -14,7 +14,9 @@ const studioStorageKey = "lyric-slide-studio:v1";
 const themeStorageKey = "show-lineup-builder-theme";
 const skinStorageKey = "show-lineup-builder-skin";
 const bankWidthStorageKey = "show-lineup-builder-bank-width";
+const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
 const appVersion = 7;
+const defaultShowName = "New Setlist";
 
 let importedSharedLineup = false;
 let state = safeLoadState();
@@ -28,6 +30,7 @@ let draggedLineupId = null;
 let draggedBankSongId = null;
 let quickAddRows = [];
 let sidePanelMode = "library";
+let accountMode = "sign-in";
 
 const els = {
   appShell: document.querySelector(".app-shell"),
@@ -115,7 +118,22 @@ const els = {
   accountSignedIn: document.querySelector("#accountSignedIn"),
   accountEmail: document.querySelector("#accountEmail"),
   accountPassword: document.querySelector("#accountPassword"),
+  accountSignInModeButton: document.querySelector("#accountSignInModeButton"),
+  accountSignUpModeButton: document.querySelector("#accountSignUpModeButton"),
+  accountSignupFields: document.querySelector("#accountSignupFields"),
+  accountFullName: document.querySelector("#accountFullName"),
+  accountPhone: document.querySelector("#accountPhone"),
+  accountCountry: document.querySelector("#accountCountry"),
+  accountUseCase: document.querySelector("#accountUseCase"),
+  accountCampField: document.querySelector("#accountCampField"),
+  accountCampName: document.querySelector("#accountCampName"),
+  accountSynagogueField: document.querySelector("#accountSynagogueField"),
+  accountSynagogueName: document.querySelector("#accountSynagogueName"),
+  accountOtherUseCaseField: document.querySelector("#accountOtherUseCaseField"),
+  accountOtherUseCase: document.querySelector("#accountOtherUseCase"),
   accountCreateButton: document.querySelector("#accountCreateButton"),
+  accountSubmitButton: document.querySelector("#accountSubmitButton"),
+  accountRecoverButton: document.querySelector("#accountRecoverButton"),
   accountEmailLabel: document.querySelector("#accountEmailLabel"),
   accountSaveCloudButton: document.querySelector("#accountSaveCloudButton"),
   accountLoadCloudButton: document.querySelector("#accountLoadCloudButton"),
@@ -135,6 +153,13 @@ const els = {
   exportDocButton: document.querySelector("#exportDocButton"),
   exportLineupFileButton: document.querySelector("#exportLineupFileButton"),
   exportDownloadReady: document.querySelector("#exportDownloadReady"),
+  slidesExportDialog: document.querySelector("#slidesExportDialog"),
+  slidesExportForm: document.querySelector("#slidesExportForm"),
+  slidesExportImage: document.querySelector("#slidesExportImage"),
+  slidesExportPreview: document.querySelector("#slidesExportPreview"),
+  slidesExportPresetSelect: document.querySelector("#slidesExportPresetSelect"),
+  saveSlidesPresetButton: document.querySelector("#saveSlidesPresetButton"),
+  deleteSlidesPresetButton: document.querySelector("#deleteSlidesPresetButton"),
   shareDialog: document.querySelector("#shareDialog"),
   shareLink: document.querySelector("#shareLink"),
   copyShareButton: document.querySelector("#copyShareButton"),
@@ -151,7 +176,7 @@ function createEmptyState() {
   return normalizeState({
     version: appVersion,
     show: {
-      name: "Current Show",
+      name: defaultShowName,
       date: new Date().toISOString().slice(0, 10),
       notes: "",
       team: "",
@@ -208,7 +233,7 @@ function loadState() {
 function normalizeState(parsed) {
   parsed = parsed && typeof parsed === "object" ? parsed : {};
   const fallbackShow = parsed.show || {
-    name: "Current Show",
+    name: defaultShowName,
     date: new Date().toISOString().slice(0, 10),
     notes: "",
     team: "",
@@ -228,7 +253,7 @@ function normalizeState(parsed) {
   const shows = Array.isArray(parsed.shows) && parsed.shows.length
     ? parsed.shows.map((show) => ({
         id: show.id || makeId("show"),
-        name: show.name || show.show?.name || "Current Show",
+        name: show.name || show.show?.name || defaultShowName,
         date: show.date || show.show?.date || new Date().toISOString().slice(0, 10),
         notes: show.notes || show.show?.notes || "",
         team: show.team || show.show?.team || "",
@@ -238,7 +263,7 @@ function normalizeState(parsed) {
       }))
     : [{
         id: parsed.activeShowId || makeId("show"),
-        name: fallbackShow.name || "Current Show",
+        name: fallbackShow.name || defaultShowName,
         date: fallbackShow.date || new Date().toISOString().slice(0, 10),
         notes: fallbackShow.notes || "",
         team: fallbackShow.team || "",
@@ -391,15 +416,35 @@ function updateAccountDialog(message = "") {
   const session = getCloudSession();
   if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
   if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
-  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : "Sign in";
+  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
+  if (els.accountSignupFields) els.accountSignupFields.hidden = accountMode !== "sign-up";
+  if (els.accountSignInModeButton) els.accountSignInModeButton.classList.toggle("active", accountMode === "sign-in");
+  if (els.accountSignUpModeButton) els.accountSignUpModeButton.classList.toggle("active", accountMode === "sign-up");
+  if (els.accountCreateButton) els.accountCreateButton.hidden = accountMode !== "sign-up";
+  if (els.accountSubmitButton) els.accountSubmitButton.textContent = accountMode === "sign-up" ? "Create account" : "Sign in";
+  if (els.accountRecoverButton) els.accountRecoverButton.hidden = accountMode === "sign-up";
+  updateAccountUseCaseFields();
   if (els.accountEmailLabel) {
     els.accountEmailLabel.textContent = session?.user?.email || els.accountEmail?.value || "Signed in";
   }
   if (els.accountSyncMessage) els.accountSyncMessage.textContent = message;
 }
 
+function setAccountMode(mode) {
+  accountMode = mode;
+  updateAccountDialog();
+}
+
+function updateAccountUseCaseFields() {
+  const value = els.accountUseCase?.value || "";
+  if (els.accountCampField) els.accountCampField.hidden = value !== "Summer camp";
+  if (els.accountSynagogueField) els.accountSynagogueField.hidden = value !== "Temple / synagogue";
+  if (els.accountOtherUseCaseField) els.accountOtherUseCaseField.hidden = value !== "Other";
+}
+
 function openAccountDialog() {
   const session = getCloudSession();
+  accountMode = "sign-in";
   if (session?.user?.email && els.accountEmail) els.accountEmail.value = session.user.email;
   if (els.accountPassword) els.accountPassword.value = "";
   updateAccountDialog();
@@ -408,6 +453,10 @@ function openAccountDialog() {
 
 async function signInFromAccountDialog(event) {
   event.preventDefault();
+  if (accountMode === "sign-up") {
+    await createAccountFromDialog();
+    return;
+  }
   updateAccountDialog("Signing in...");
   try {
     const session = await cloudRequest("/api/auth/sign-in", {
@@ -434,6 +483,15 @@ async function createAccountFromDialog() {
       body: JSON.stringify({
         email: els.accountEmail.value.trim(),
         password: els.accountPassword.value,
+        profile: {
+          fullName: els.accountFullName?.value.trim() || "",
+          phone: els.accountPhone?.value.trim() || "",
+          country: els.accountCountry?.value.trim() || "",
+          useCase: els.accountUseCase?.value || "",
+          campName: els.accountCampName?.value.trim() || "",
+          synagogueName: els.accountSynagogueName?.value.trim() || "",
+          otherUseCase: els.accountOtherUseCase?.value.trim() || "",
+        },
       }),
     });
     if (!session?.access_token) {
@@ -446,6 +504,22 @@ async function createAccountFromDialog() {
     updateAccountDialog("Account created. This device was saved to your account.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not create account.");
+  }
+}
+
+async function recoverPasswordFromAccountDialog() {
+  updateAccountDialog("Sending recovery email...");
+  try {
+    await cloudRequest("/api/auth/recover", {
+      method: "POST",
+      body: JSON.stringify({
+        email: els.accountEmail.value.trim(),
+        phone: els.accountPhone?.value.trim() || "",
+      }),
+    });
+    updateAccountDialog("Recovery email sent. SMS recovery depends on the phone provider connected to the account.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not send recovery email.");
   }
 }
 
@@ -464,7 +538,7 @@ function syncActiveShowFromFields() {
 }
 
 function commitShowMetaFromFields() {
-  state.show.name = els.showName.value.trim() || "Current Show";
+  state.show.name = els.showName.value.trim() || defaultShowName;
   state.show.date = els.showDate.value || state.show.date;
 }
 
@@ -691,7 +765,125 @@ function buildLineupSlideDeck() {
   return slides;
 }
 
-function buildSlidesExportHtml(slides) {
+function slidesExportThemeCss(theme = {}) {
+  if (theme.image) {
+    return `.slide { background: linear-gradient(rgba(3,7,18,.56), rgba(3,7,18,.66)), url("${theme.image}") center / cover no-repeat; }`;
+  }
+  if (theme.name === "shabbat") {
+    return `.slide { background: radial-gradient(circle at 25% 15%, rgba(255,224,158,.35), transparent 24%), radial-gradient(circle at 75% 12%, rgba(255,245,210,.26), transparent 22%), linear-gradient(135deg, #130d08, #05070b 62%); }`;
+  }
+  if (theme.name === "campfire") {
+    return `.slide { background: radial-gradient(circle at 50% 100%, rgba(255,122,36,.34), transparent 36%), linear-gradient(145deg, #211007, #07111f 72%); }`;
+  }
+  if (theme.name === "bright") {
+    return `:root { color-scheme: light; --bg:#fffaf2; --ink:#101827; --muted:#596678; --accent:#2563eb; --watermark:rgba(15,23,42,.45); } .slide { background:#fffaf2; } .slide.note { background:#fff7dd; }`;
+  }
+  return "";
+}
+
+function loadSlidesThemePresets() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(slidesThemePresetsStorageKey) || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((preset) => preset?.id && preset?.name && preset?.image).slice(0, 24)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSlidesThemePresets(presets) {
+  localStorage.setItem(slidesThemePresetsStorageKey, JSON.stringify(presets.slice(0, 24)));
+}
+
+function selectedSlidesThemeName() {
+  return document.querySelector("input[name='slidesExportTheme']:checked")?.value || "default";
+}
+
+function selectedSlidesThemePreset() {
+  const presetId = els.slidesExportPresetSelect?.value || "";
+  return loadSlidesThemePresets().find((preset) => preset.id === presetId) || null;
+}
+
+function renderSlidesPresetOptions() {
+  const presets = loadSlidesThemePresets();
+  if (!els.slidesExportPresetSelect) return;
+  els.slidesExportPresetSelect.innerHTML = [
+    `<option value="">No saved background</option>`,
+    ...presets.map((preset) => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`),
+  ].join("");
+  if (els.deleteSlidesPresetButton) els.deleteSlidesPresetButton.disabled = !els.slidesExportPresetSelect.value;
+}
+
+function slidesThemePreviewStyle(theme = {}) {
+  if (theme.image) {
+    return `background-image: linear-gradient(rgba(3,7,18,.42), rgba(3,7,18,.56)), url("${theme.image}");`;
+  }
+  if (theme.name === "shabbat") {
+    return "background-image: radial-gradient(circle at 24% 18%, rgba(255,224,158,.42), transparent 28%), radial-gradient(circle at 78% 16%, rgba(255,245,210,.3), transparent 24%), linear-gradient(135deg, #1b1008, #05070b 68%);";
+  }
+  if (theme.name === "campfire") {
+    return "background-image: radial-gradient(circle at 50% 100%, rgba(255,122,36,.42), transparent 42%), linear-gradient(145deg, #2a1308, #07111f 72%);";
+  }
+  if (theme.name === "bright") {
+    return "background:#fffaf2; color:#101827;";
+  }
+  return "background-image: radial-gradient(circle at top left, rgba(91,146,255,.22), transparent 36%), linear-gradient(135deg, #07111f, #05070b);";
+}
+
+async function currentSlidesExportTheme() {
+  const image = await imageInputToDataUrl(els.slidesExportImage);
+  const preset = selectedSlidesThemePreset();
+  return {
+    name: selectedSlidesThemeName(),
+    image: image || preset?.image || "",
+    presetName: preset?.name || "",
+  };
+}
+
+async function renderSlidesExportPreview() {
+  if (!els.slidesExportPreview) return;
+  const theme = await currentSlidesExportTheme();
+  const label = theme.image ? (theme.presetName || "Uploaded background") : theme.name;
+  els.slidesExportPreview.setAttribute("style", slidesThemePreviewStyle(theme));
+  els.slidesExportPreview.innerHTML = `
+    <div class="slides-theme-preview-content">
+      <span>${escapeHtml(label === "default" ? "Default" : label)}</span>
+      <strong>Sample lyric line</strong>
+      <small>Created with LINEUP · Songleading.net</small>
+    </div>
+  `;
+}
+
+async function saveCurrentSlidesPreset() {
+  const image = await imageInputToDataUrl(els.slidesExportImage);
+  if (!image) {
+    toast("Choose a background image first.");
+    return;
+  }
+  const name = window.prompt("Preset name", "New background");
+  if (!name?.trim()) return;
+  const presets = loadSlidesThemePresets();
+  const preset = { id: makeId("theme"), name: name.trim(), image };
+  presets.unshift(preset);
+  saveSlidesThemePresets(presets);
+  renderSlidesPresetOptions();
+  if (els.slidesExportPresetSelect) els.slidesExportPresetSelect.value = preset.id;
+  if (els.slidesExportImage) els.slidesExportImage.value = "";
+  await renderSlidesExportPreview();
+  toast("Background preset saved.");
+}
+
+async function deleteCurrentSlidesPreset() {
+  const presetId = els.slidesExportPresetSelect?.value || "";
+  if (!presetId) return;
+  saveSlidesThemePresets(loadSlidesThemePresets().filter((preset) => preset.id !== presetId));
+  renderSlidesPresetOptions();
+  await renderSlidesExportPreview();
+  toast("Preset removed.");
+}
+
+function buildSlidesExportHtml(slides, theme = {}) {
   const title = state.show.name || "Lineup slides";
   const date = formatExportDate(state.show.date);
   const slideCount = Math.max(slides.length, 1);
@@ -709,13 +901,14 @@ function buildSlidesExportHtml(slides) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)} slides</title>
   <style>
-    :root { color-scheme: dark; --bg:#05070b; --ink:#f8fbff; --muted:#9fb0c6; --accent:#5b92ff; }
+    :root { color-scheme: dark; --bg:#05070b; --ink:#f8fbff; --muted:#9fb0c6; --accent:#5b92ff; --watermark:rgba(255,255,255,.5); }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--ink); font-family:Inter, Arial, sans-serif; }
     .deck-bar { position:fixed; inset:16px 16px auto; z-index:5; display:flex; justify-content:space-between; gap:16px; color:var(--muted); font-size:14px; font-weight:800; letter-spacing:.02em; pointer-events:none; }
     .slide { min-height:100vh; display:grid; place-items:center; padding:clamp(42px, 7vw, 92px); border-bottom:1px solid rgba(255,255,255,.08); background:radial-gradient(circle at top left, rgba(91,146,255,.18), transparent 34%), #05070b; }
     .slide.note { background:radial-gradient(circle at top left, rgba(245,181,43,.2), transparent 34%), #080704; }
     .slide.missing { background:radial-gradient(circle at top left, rgba(165,173,178,.18), transparent 34%), #05070b; }
+    ${slidesExportThemeCss(theme)}
     .content { width:min(1200px, 92vw); text-align:center; }
     .meta { margin-bottom:28px; color:var(--accent); font-size:clamp(15px, 2vw, 22px); font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
     h1 { margin:0 0 42px; font-size:clamp(46px, 8vw, 104px); line-height:.96; letter-spacing:-.03em; }
@@ -723,6 +916,7 @@ function buildSlidesExportHtml(slides) {
     .note .lyrics { color:#ffe1a3; font-style:italic; }
     .missing .lyrics { color:#c9d3e2; font-size:clamp(30px, 5vw, 64px); }
     .empty { color:var(--muted); }
+    .watermark { position:fixed; right:22px; bottom:16px; z-index:4; color:var(--watermark); font-size:12px; font-weight:800; letter-spacing:.02em; text-align:right; }
     @media print {
       .deck-bar { display:none; }
       .slide { min-height:100vh; page-break-after:always; break-after:page; }
@@ -737,6 +931,7 @@ function buildSlidesExportHtml(slides) {
         <div class="meta">${escapeHtml(slide.meta || `${index + 1} / ${slideCount}`)}</div>
         <h1>${escapeHtml(slide.title || title)}</h1>
         <div class="lyrics">${(slide.lines || []).map((line) => `<div>${escapeHtml(line)}</div>`).join("") || `<div class="empty">Instrumental</div>`}</div>
+        <div class="watermark">Created with LINEUP<br>Songleading.net</div>
       </div>
     </section>
   `).join("")}
@@ -758,12 +953,44 @@ function buildSlidesExportHtml(slides) {
 </html>`;
 }
 
-function exportLineupSlides() {
+async function imageInputToDataUrl(input) {
+  const file = input?.files?.[0];
+  if (!file) return "";
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(reader.error || new Error("Could not read the image.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function exportLineupSlides(theme = {}) {
   commitShowMetaFromFields();
   const slides = buildLineupSlideDeck();
-  const html = buildSlidesExportHtml(slides);
+  const html = buildSlidesExportHtml(slides, theme);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-slides.html`, "Slides deck is ready.");
+}
+
+function openSlidesExportDialog() {
+  if (!buildLineupSlideDeck().length) {
+    toast("Add songs before exporting slides.");
+    return;
+  }
+  if (els.slidesExportImage) els.slidesExportImage.value = "";
+  renderSlidesPresetOptions();
+  openDialog(els.slidesExportDialog);
+  renderSlidesExportPreview();
+}
+
+async function submitSlidesExport(event) {
+  event.preventDefault();
+  try {
+    await exportLineupSlides(await currentSlidesExportTheme());
+    closeDialog(els.slidesExportDialog);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "Could not export slides.");
+  }
 }
 
 function tagSuggestions(excludeSongId = "") {
@@ -833,7 +1060,7 @@ function closestFromEvent(event, selector) {
 }
 
 function render() {
-  els.showName.value = state.show.name || "Current Show";
+  els.showName.value = state.show.name || defaultShowName;
   els.showDate.value = state.show.date;
   renderSavedShows();
   renderFilters();
@@ -843,7 +1070,7 @@ function render() {
 
 function renderSavedShows() {
   if (els.savedShowsCurrent) {
-    els.savedShowsCurrent.textContent = `${state.show.name || "Current Show"} · ${formatExportDate(state.show.date)}`;
+    els.savedShowsCurrent.textContent = `${state.show.name || defaultShowName} · ${formatExportDate(state.show.date)}`;
   }
   const shows = Array.isArray(state.shows) && state.shows.length
     ? state.shows
@@ -866,7 +1093,7 @@ function setSidePanelMode(mode) {
   els.appShell.classList.remove("bank-collapsed");
   els.bankPanel?.classList.toggle("shows-mode", sidePanelMode === "shows");
   els.bankPanel?.setAttribute("aria-label", sidePanelMode === "shows" ? "Saved shows" : "Song bank");
-  if (els.sidePanelTitle) els.sidePanelTitle.textContent = sidePanelMode === "shows" ? "Shows" : "Library";
+  if (els.sidePanelTitle) els.sidePanelTitle.textContent = sidePanelMode === "shows" ? "Setlists" : "Library";
   if (els.libraryView) els.libraryView.hidden = sidePanelMode !== "library";
   if (els.showsView) els.showsView.hidden = sidePanelMode !== "shows";
   if (els.newSongButton) els.newSongButton.hidden = sidePanelMode !== "library";
@@ -1040,8 +1267,8 @@ function renderSongBank() {
     .map((song) => {
       const category = categoryFor(song.category);
       return `
-        <article class="bank-song ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}">
-          <button class="bank-add-button" type="button" data-action="add-bank" data-song-id="${song.id}" aria-label="Add ${escapeHtml(song.title)} to lineup">
+        <article class="bank-song ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}" draggable="true">
+          <button class="bank-add-button" type="button" data-action="add-bank" data-song-id="${song.id}" aria-label="Double-click to add ${escapeHtml(song.title)} to lineup" title="Double-click to add">
             <span class="bank-song-main">
               <span class="song-name">${escapeHtml(song.title)}</span>
               ${song.hebrew ? `<span class="hebrew-badge" title="Contains Hebrew">He</span>` : ""}
@@ -1442,7 +1669,7 @@ function createNewShow() {
   syncActiveShowFromFields();
   const show = {
     id: makeId("show"),
-    name: "New Show",
+    name: defaultShowName,
     date: new Date().toISOString().slice(0, 10),
     notes: "",
     team: "",
@@ -1866,13 +2093,20 @@ function drawPdfCanvas(context, page, items, includeCredits, includeRealKey, ori
       y += item.type === "note" ? metrics.noteRowHeight : metrics.rowHeight;
     });
   }
+  context.save();
+  context.fillStyle = "#555555";
+  context.font = "700 8px Arial, Helvetica, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "alphabetic";
+  context.fillText("Created with LINEUP · Songleading.net", page.width / 2, page.height - 13);
+  context.restore();
 }
 
 function drawPdfLabels(context, x, y, width, includeRealKey) {
-  const keyWidth = 34;
-  const capoWidth = 40;
+  const keyWidth = 28;
+  const capoWidth = 32;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 40 : 0;
+  const realKeyWidth = includeRealKey ? 34 : 0;
   context.save();
   context.font = "900 11px Arial, Helvetica, sans-serif";
   context.fillStyle = "#444444";
@@ -1892,10 +2126,10 @@ function drawPdfLabels(context, x, y, width, includeRealKey) {
 }
 
 function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includeRealKey, orientation) {
-  const keyWidth = 34;
-  const capoWidth = 40;
+  const keyWidth = 28;
+  const capoWidth = 32;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 40 : 0;
+  const realKeyWidth = includeRealKey ? 34 : 0;
   const lineHeight = item.type === "note" ? metrics.noteRowHeight : metrics.rowHeight;
   const mainY = y + lineHeight / 2;
   const titleX = x + numberWidth + 6;
@@ -1920,8 +2154,8 @@ function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includ
     context.fillText(item.number, x + numberWidth - 8, mainY);
     context.textAlign = "left";
     const hasCredits = includeCredits && item.credits;
-    const titleY = hasCredits ? mainY - Math.max(4, metrics.fontSize * 0.15) : mainY;
-    const creditY = mainY + Math.max(7, metrics.fontSize * 0.30);
+    const titleY = hasCredits ? mainY - Math.max(5, metrics.fontSize * 0.18) : mainY;
+    const creditY = titleY + Math.max(9, metrics.fontSize * 0.46);
     const note = item.note || "";
     const noteWidth = note ? Math.min(titleWidth * 0.34, Math.max(70, context.measureText(note).width + 10)) : 0;
     fitCanvasText(context, shortenTitle(item.title, metrics.columns, orientation), titleX, titleY, titleWidth - noteWidth - 6);
@@ -2183,8 +2417,8 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
   const fontSize = metrics.fontSize;
   const exportDate = formatExportDate(state.show.date);
   const chartColumns = includeRealKey
-    ? "42px minmax(0, 1fr) 42px 36px 42px"
-    : "42px minmax(0, 1fr) 42px 36px";
+    ? "42px minmax(0, 1fr) 32px 30px 36px"
+    : "42px minmax(0, 1fr) 32px 30px";
   const rows = items
     .map((item) => item.type === "note" ? `
       <tr class="note">
@@ -2217,7 +2451,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           @page { size: ${orientation}; margin: 0.34in; }
           * { box-sizing: border-box; }
           body { margin: 0; color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; }
-          .sheet { width: 100%; height: 100vh; display: flex; flex-direction: column; gap: 8px; }
+          .sheet { width: 100%; height: 100vh; display: flex; flex-direction: column; gap: 8px; padding-bottom: 18px; }
           header { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2px solid #111; padding-bottom: 7px; }
           h1 { margin: 0; font-size: ${orientation === "landscape" ? 34 : 30}px; line-height: 1; }
           .date { font-size: 20px; font-weight: 700; }
@@ -2244,6 +2478,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           .number { padding-left: 2px; padding-right: 8px; font-size: 0.82em; overflow: visible; text-align: right; text-overflow: clip; }
           .capo, .key { color: #333; }
           .real-key { color: #444; font-size: ${Math.max(11, Math.floor(fontSize * 0.58))}px; }
+          .watermark { margin-top: auto; padding-top: 6px; text-align: center; color: #555; font-size: 8px; font-weight: 700; }
           @media print { .sheet { height: auto; } }
         </style>
       </head>
@@ -2255,6 +2490,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           </header>
           <div class="chart-labels"><span></span><span>Song</span><span>Capo</span><span>Key</span>${includeRealKey ? "<span>Real</span>" : ""}</div>
           <table><tbody>${rows}</tbody></table>
+          <div class="watermark">Created with LINEUP · Songleading.net</div>
         </section>
       </body>
     </html>`;
@@ -2808,7 +3044,11 @@ function bindEvents() {
     openAccountDialog();
   });
   els.accountForm?.addEventListener("submit", signInFromAccountDialog);
+  els.accountSignInModeButton?.addEventListener("click", () => setAccountMode("sign-in"));
+  els.accountSignUpModeButton?.addEventListener("click", () => setAccountMode("sign-up"));
+  els.accountUseCase?.addEventListener("change", updateAccountUseCaseFields);
   els.accountCreateButton?.addEventListener("click", createAccountFromDialog);
+  els.accountRecoverButton?.addEventListener("click", recoverPasswordFromAccountDialog);
   els.accountSaveCloudButton?.addEventListener("click", async () => {
     updateAccountDialog("Saving...");
     try {
@@ -2855,7 +3095,27 @@ function bindEvents() {
   els.exportSlidesButton?.addEventListener("click", (event) => {
     event.preventDefault();
     els.headerMenu.open = false;
-    exportLineupSlides();
+    openSlidesExportDialog();
+  });
+  els.slidesExportForm?.addEventListener("submit", submitSlidesExport);
+  document.querySelectorAll("input[name='slidesExportTheme']").forEach((input) => {
+    input.addEventListener("change", renderSlidesExportPreview);
+  });
+  els.slidesExportImage?.addEventListener("change", async () => {
+    if (els.slidesExportPresetSelect) els.slidesExportPresetSelect.value = "";
+    if (els.deleteSlidesPresetButton) els.deleteSlidesPresetButton.disabled = true;
+    await renderSlidesExportPreview();
+  });
+  els.slidesExportPresetSelect?.addEventListener("change", async () => {
+    if (els.slidesExportImage) els.slidesExportImage.value = "";
+    if (els.deleteSlidesPresetButton) els.deleteSlidesPresetButton.disabled = !els.slidesExportPresetSelect.value;
+    await renderSlidesExportPreview();
+  });
+  els.saveSlidesPresetButton?.addEventListener("click", () => {
+    saveCurrentSlidesPreset().catch((error) => toast(error instanceof Error ? error.message : "Could not save preset."));
+  });
+  els.deleteSlidesPresetButton?.addEventListener("click", () => {
+    deleteCurrentSlidesPreset().catch((error) => toast(error instanceof Error ? error.message : "Could not delete preset."));
   });
 
   document.addEventListener("click", (event) => {
@@ -2883,7 +3143,7 @@ function bindEvents() {
   }
 
   els.showName.addEventListener("change", (event) => {
-    state.show.name = event.target.value.trim() || "Current Show";
+    state.show.name = event.target.value.trim() || defaultShowName;
     els.showName.value = state.show.name;
     saveState();
     renderSavedShows();
@@ -2907,7 +3167,7 @@ function bindEvents() {
     if (!actionEl) return;
     const songId = actionEl.dataset.songId;
     if (actionEl.dataset.action === "add-bank") {
-      addSongToLineup(songId, true);
+      event.preventDefault();
       return;
     }
     if (actionEl.dataset.action === "toggle-banger") {
@@ -2928,6 +3188,7 @@ function bindEvents() {
     if (event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides']")) return;
     const row = event.target.closest(".bank-song");
     if (!row) return;
+    event.preventDefault();
     addSongToLineup(row.dataset.songId, true);
   });
 
@@ -3240,7 +3501,7 @@ function bindEmergencyButtonDelegates() {
 
       if (control.id === "exportSlidesButton") {
         handled();
-        exportLineupSlides();
+        openSlidesExportDialog();
         return;
       }
 
@@ -3420,7 +3681,6 @@ function bindEmergencyButtonDelegates() {
         const lineupId = control.dataset.lineupId;
 
         if (action === "add-bank") {
-          addSongToLineup(songId, true);
           return;
         }
 

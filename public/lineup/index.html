@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Show Lineup Builder</title>
+    <title>Lineup by Barak Malichi</title>
     <link rel="stylesheet" href="./styles.css?v=109" />
   </head>
   <body>
@@ -11,21 +11,21 @@
       <section class="show-panel">
         <header class="show-header">
           <div class="show-title-block">
-            <p class="eyebrow">Lineup</p>
             <div class="show-title-row">
-              <input id="showName" class="show-title-input" type="text" value="Current Show" aria-label="Show name" />
+              <input id="showName" class="show-title-input" type="text" value="New Setlist" aria-label="Show name" />
+              <input id="showDate" class="show-date-inline" type="date" aria-label="Show date" />
             </div>
           </div>
           <div class="show-tools">
             <div class="header-actions">
+              <button class="ghost-button top-icon-button shows-tab-button" id="showsTabButton" aria-label="Open saved setlists" title="Open saved setlists">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M18 15v6M15 18h6"/></svg>
+                <span>Setlists</span>
+                <small id="savedShowsCurrent">New Setlist</small>
+              </button>
               <a class="ghost-button top-icon-button home-button" id="homeButton" href="/" aria-label="Back to home" title="Back to home">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
               </a>
-              <button class="ghost-button top-icon-button shows-tab-button" id="showsTabButton" aria-label="Open saved shows" title="Open saved shows">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M18 15v6M15 18h6"/></svg>
-                <span>Shows</span>
-                <small id="savedShowsCurrent">Current Show</small>
-              </button>
               <button class="primary-button top-icon-button" id="saveLineupButton" aria-label="Save lineup" title="Save lineup">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
               </button>
@@ -59,7 +59,6 @@
                 </div>
               </details>
             </div>
-            <input id="showDate" class="show-date-inline" type="date" aria-label="Show date" />
           </div>
         </header>
 
@@ -104,7 +103,10 @@
                 <circle class="mark-dot" cx="38" cy="31" r="3" />
               </svg>
             </div>
-            <p class="eyebrow" id="sidePanelTitle">Library</p>
+            <div class="brand-copy">
+              <strong>Lineup</strong>
+              <small>by Barak Malichi</small>
+            </div>
           </div>
           <div class="bank-title-actions">
             <button id="newSongButton" class="icon-button" aria-label="New song" title="New song">
@@ -120,6 +122,7 @@
         </header>
 
         <div id="libraryView" class="side-panel-view library-view">
+          <p class="eyebrow side-panel-heading" id="sidePanelTitle">Library</p>
           <div class="search-row">
             <label class="search-box" for="songSearch">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -137,8 +140,8 @@
         <div id="showsView" class="side-panel-view shows-view" hidden>
           <div class="saved-shows-header">
             <div>
-              <p class="eyebrow">Shows</p>
-              <h2>Saved Shows</h2>
+              <p class="eyebrow">Setlists</p>
+              <h2>Saved Setlists</h2>
             </div>
             <div class="saved-show-actions">
               <button class="icon-action" id="newShowButton" aria-label="New show" title="New show">
@@ -421,6 +424,48 @@
         </div>
         <p class="utility-copy">Use this only when you want the same songs, lineups, and slides on another device.</p>
         <div id="accountSignedOut" class="account-sync-panel">
+          <div class="account-mode-actions" role="tablist" aria-label="Account mode">
+            <button class="account-mode-button active" type="button" id="accountSignInModeButton">Sign in</button>
+            <button class="account-mode-button primary" type="button" id="accountSignUpModeButton">Sign Up</button>
+          </div>
+          <div id="accountSignupFields" class="account-signup-fields" hidden>
+            <label>
+              <span>Full name</span>
+              <input id="accountFullName" type="text" autocomplete="name" />
+            </label>
+            <div class="form-grid">
+              <label>
+                <span>Phone number</span>
+                <input id="accountPhone" type="tel" autocomplete="tel" />
+              </label>
+              <label>
+                <span>Country</span>
+                <input id="accountCountry" type="text" autocomplete="country-name" />
+              </label>
+            </div>
+            <label>
+              <span>Main use case</span>
+              <select id="accountUseCase">
+                <option>Summer camp</option>
+                <option>Temple / synagogue</option>
+                <option>Community singalong</option>
+                <option>School / educational program</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label id="accountCampField">
+              <span>Which camp?</span>
+              <input id="accountCampName" type="text" />
+            </label>
+            <label id="accountSynagogueField" hidden>
+              <span>Which temple / synagogue?</span>
+              <input id="accountSynagogueName" type="text" />
+            </label>
+            <label id="accountOtherUseCaseField" hidden>
+              <span>Tell us briefly</span>
+              <input id="accountOtherUseCase" type="text" />
+            </label>
+          </div>
           <label>
             <span>Email</span>
             <input id="accountEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -429,11 +474,11 @@
             <span>Password</span>
             <input id="accountPassword" type="password" autocomplete="current-password" />
           </label>
+          <button class="link-button" type="button" id="accountRecoverButton">Forgot password?</button>
           <div class="dialog-actions compact">
             <span></span>
             <span></span>
-            <button class="ghost-button" type="button" id="accountCreateButton">Create</button>
-            <button class="primary-button" type="submit">Sign in</button>
+            <button class="primary-button" type="submit" id="accountSubmitButton">Sign in</button>
           </div>
         </div>
         <div id="accountSignedIn" class="account-sync-panel" hidden>
@@ -462,6 +507,64 @@
           <button class="ghost-button" type="button" id="accountSignOutButton">Sign out</button>
         </div>
         <p id="accountSyncMessage" class="sync-note"></p>
+      </form>
+    </dialog>
+
+    <dialog id="slidesExportDialog" class="song-dialog utility-dialog">
+      <form method="dialog" id="slidesExportForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Presentation</p>
+            <h2>Export Slides</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="Close" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <p class="utility-copy">Choose a one-time look for this export. Saved song slide designs stay unchanged.</p>
+        <div class="slides-theme-export-layout">
+          <div class="slides-theme-controls">
+            <div class="theme-export-grid">
+              <label class="theme-export-card">
+                <input type="radio" name="slidesExportTheme" value="default" checked />
+                <span><strong>Default</strong><small>Clean dark slides</small></span>
+              </label>
+              <label class="theme-export-card shabbat">
+                <input type="radio" name="slidesExportTheme" value="shabbat" />
+                <span><strong>Shabbat candles</strong><small>Warm prayer look</small></span>
+              </label>
+              <label class="theme-export-card campfire">
+                <input type="radio" name="slidesExportTheme" value="campfire" />
+                <span><strong>Campfire</strong><small>Golden outdoor feel</small></span>
+              </label>
+              <label class="theme-export-card bright">
+                <input type="radio" name="slidesExportTheme" value="bright" />
+                <span><strong>Bright</strong><small>White and simple</small></span>
+              </label>
+            </div>
+            <div class="theme-preset-row">
+              <label>
+                <span>Saved background</span>
+                <select id="slidesExportPresetSelect"></select>
+              </label>
+              <button id="deleteSlidesPresetButton" class="ghost-button icon-only-button" type="button" aria-label="Delete saved background" title="Delete saved background">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+              </button>
+            </div>
+            <label>
+              <span>Background image for this export only</span>
+              <input id="slidesExportImage" type="file" accept="image/*" />
+            </label>
+            <button id="saveSlidesPresetButton" class="ghost-button" type="button">Save background preset</button>
+          </div>
+          <div id="slidesExportPreview" class="slides-theme-preview" aria-label="Theme preview"></div>
+        </div>
+        <div class="dialog-actions compact">
+          <span></span>
+          <span></span>
+          <button class="ghost-button" type="button" data-close-dialog>Cancel</button>
+          <button class="primary-button" type="submit">Export Slides</button>
+        </div>
       </form>
     </dialog>
 

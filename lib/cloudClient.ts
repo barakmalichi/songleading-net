@@ -19,6 +19,16 @@ export type CloudSession = {
   };
 };
 
+export type SignupProfile = {
+  fullName: string;
+  phone: string;
+  country: string;
+  useCase: string;
+  campName?: string;
+  synagogueName?: string;
+  otherUseCase?: string;
+};
+
 export function getStoredSession(): CloudSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -62,13 +72,20 @@ export async function signInToCloud(email: string, password: string) {
   return data as CloudSession;
 }
 
-export async function signUpForCloud(email: string, password: string) {
+export async function signUpForCloud(email: string, password: string, profile?: SignupProfile) {
   const data = await apiJson("/api/auth/sign-up", {
     method: "POST",
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, profile })
   });
   if ((data as CloudSession).access_token) setStoredSession(data);
   return data as CloudSession;
+}
+
+export async function requestPasswordRecovery(email: string, phone?: string) {
+  return apiJson("/api/auth/recover", {
+    method: "POST",
+    body: JSON.stringify({ email, phone })
+  });
 }
 
 export async function getValidSession() {
