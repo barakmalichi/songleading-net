@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Cloud, LogIn, LogOut, RefreshCcw, UploadCloud, UserPlus, X } from "lucide-react";
+import { Check, Cloud, LogIn, LogOut, UserPlus, X } from "lucide-react";
 import {
   getStoredSession,
   loadCloudWorkspaceOntoDevice,
@@ -26,6 +26,12 @@ const useCases = [
 ];
 
 const ADMIN_EMAIL = "barakmalichi@gmail.com";
+
+function hasCloudWorkspaceData(workspace: unknown) {
+  if (!workspace || typeof workspace !== "object") return false;
+  const data = workspace as { lineupState?: unknown; studioData?: unknown };
+  return Boolean(data.lineupState || data.studioData);
+}
 
 export function AuthButton() {
   const [mode, setMode] = useState<Mode>("closed");
@@ -79,10 +85,17 @@ export function AuthButton() {
         return;
       }
       setSession(nextSession);
-      await saveCurrentDeviceToCloud();
+      if (action === "sign-in") {
+        const workspace = await loadCloudWorkspaceOntoDevice();
+        if (!hasCloudWorkspaceData(workspace)) {
+          await saveCurrentDeviceToCloud();
+        }
+      } else {
+        await saveCurrentDeviceToCloud();
+      }
       setMode("signed-in");
       setPassword("");
-      setMessage("Signed in. This device is now saved to your account.");
+      setMessage("Your cloud workspace is active. Changes save automatically.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign in.");
     } finally {
@@ -98,33 +111,6 @@ export function AuthButton() {
       setMessage("Password recovery email sent. SMS recovery depends on the phone provider connected to the account.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not send recovery email.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveDevice() {
-    setBusy(true);
-    setMessage("");
-    try {
-      await saveCurrentDeviceToCloud();
-      setMessage("Saved this device to your account.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not sync.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadCloud() {
-    setBusy(true);
-    setMessage("");
-    try {
-      await loadCloudWorkspaceOntoDevice();
-      setMessage("Cloud workspace loaded. Refreshing...");
-      window.setTimeout(() => window.location.reload(), 500);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load cloud workspace.");
     } finally {
       setBusy(false);
     }
@@ -294,24 +280,9 @@ export function AuthButton() {
                   <Check size={17} />
                   {session.user?.email || email || "Signed in"}
                 </div>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={saveDevice}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-900 disabled:opacity-60"
-                >
-                  <UploadCloud size={17} />
-                  Save this device to cloud
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={loadCloud}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-900 disabled:opacity-60"
-                >
-                  <RefreshCcw size={17} />
-                  Load cloud on this device
-                </button>
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold leading-6 text-slate-600">
+                  Your cloud workspace is active. Changes save automatically and will be available when you sign in from another device.
+                </p>
                 <button
                   type="button"
                   onClick={signOut}

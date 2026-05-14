@@ -451,6 +451,20 @@ async function loadCloudWorkspaceToDevice() {
   return workspace;
 }
 
+function cloudWorkspaceHasData(workspace) {
+  return Boolean(workspace?.lineupState || workspace?.studioData);
+}
+
+async function loadCloudWorkspaceOrSeedCurrent() {
+  const workspace = await loadCloudWorkspaceToDevice();
+  cloudWorkspaceLoadedForSession = true;
+  if (!cloudWorkspaceHasData(workspace)) {
+    await saveCurrentWorkspaceToCloud();
+    return { seeded: true, workspace };
+  }
+  return { seeded: false, workspace };
+}
+
 let lineupCloudTimer = null;
 
 function queueLineupCloudSave() {
@@ -468,10 +482,10 @@ function updateAccountDialog(message = "") {
   const guest = hasGuestSession();
   if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
   if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
-  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
+  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Account" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
   if (els.accountDialogCopy) {
     els.accountDialogCopy.textContent = session
-      ? "Your setlists, songs, and slides are connected to this account."
+      ? "Your cloud workspace is active. Changes save automatically."
       : accountMode === "sign-up"
         ? "Create an account to use Lineup and keep your work saved across devices."
         : "Sign in to sync across devices, or continue as guest for this browser only.";
@@ -555,8 +569,7 @@ function continueAsGuest() {
 async function loadCloudOnceForSession() {
   if (cloudWorkspaceLoadedForSession || importedSharedLineup) return;
   try {
-    await loadCloudWorkspaceToDevice();
-    cloudWorkspaceLoadedForSession = true;
+    await loadCloudWorkspaceOrSeedCurrent();
   } catch (error) {
     console.warn("Could not load cloud workspace automatically.", error);
   }
@@ -598,13 +611,12 @@ async function signInFromAccountDialog(event) {
     });
     if (!session?.access_token) throw new Error("Could not sign in.");
     setCloudSession(session);
+    const cloudResult = await loadCloudWorkspaceOrSeedCurrent();
     if (authGateActive) {
-      await loadCloudOnceForSession();
-      await finishRequiredAccountFlow("Signed in. Your saved workspace is ready.");
+      await finishRequiredAccountFlow(cloudResult.seeded ? "Signed in. Your cloud workspace is ready." : "Signed in. Your cloud workspace is loaded.");
       return;
     }
-    await saveCurrentWorkspaceToCloud();
-    updateAccountDialog("Signed in. This device was saved to your account.");
+    updateAccountDialog(cloudResult.seeded ? "Signed in. Your cloud workspace is ready." : "Signed in. Your cloud workspace is loaded.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not sign in.");
   }
@@ -635,6 +647,7 @@ async function createAccountFromDialog() {
       return;
     }
     setCloudSession(session);
+    cloudWorkspaceLoadedForSession = true;
     await saveCurrentWorkspaceToCloud();
     if (authGateActive) {
       await finishRequiredAccountFlow("Account created. Your Lineup workspace is ready.");
