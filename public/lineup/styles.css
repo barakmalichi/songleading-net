@@ -1793,7 +1793,8 @@ body.is-pointer-dragging * {
   background: rgba(0, 0, 0, 0.56);
   backdrop-filter: blur(1px);
   animation: coach-fade 220ms ease both;
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .coach-spotlight {
@@ -1809,6 +1810,7 @@ body.is-pointer-dragging * {
 
 .coach-tip {
   position: fixed;
+  z-index: 2;
   display: grid;
   gap: 8px;
   border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
@@ -1819,6 +1821,7 @@ body.is-pointer-dragging * {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
   transition: left 260ms ease, top 260ms ease;
   pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .coach-tip::before {
@@ -1871,6 +1874,19 @@ body.is-pointer-dragging * {
   font-size: 0.82rem;
 }
 
+body.auth-required .app-shell {
+  filter: blur(1px);
+}
+
+body.auth-required #accountDialog [data-close-dialog],
+body.auth-required #accountDialog::backdrop {
+  cursor: default;
+}
+
+body.auth-required #accountDialog .dialog-header [data-close-dialog] {
+  display: none;
+}
+
 @keyframes coach-fade {
   from {
     opacity: 0;
@@ -1891,6 +1907,40 @@ body.is-pointer-dragging * {
   .coach-tip {
     animation: none;
     transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .coach-overlay {
+    background: rgba(0, 0, 0, 0.62);
+  }
+
+  .coach-spotlight {
+    border-radius: 14px;
+  }
+
+  .coach-tip {
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    left: 12px !important;
+    top: auto !important;
+    width: auto !important;
+    max-width: none;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .coach-tip::before {
+    display: none;
+  }
+
+  .coach-actions {
+    flex-direction: column-reverse;
+  }
+
+  .coach-actions .ghost-button,
+  .coach-actions .primary-button {
+    width: 100%;
   }
 }
 

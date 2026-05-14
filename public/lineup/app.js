@@ -16,6 +16,7 @@ const skinStorageKey = "show-lineup-builder-skin";
 const bankWidthStorageKey = "show-lineup-builder-bank-width";
 const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
 const onboardingHiddenStorageKey = "lineup-onboarding-tips-hidden:v1";
+const requireAccountForApp = true;
 const appVersion = 7;
 const defaultShowName = "New Setlist";
 
@@ -35,6 +36,8 @@ let accountMode = "sign-in";
 let slidePreviewOpen = false;
 let activeSlidePreviewIndex = 0;
 let coachStepIndex = 0;
+let authGateActive = false;
+let cloudWorkspaceLoadedForSession = false;
 
 const els = {
   lineupIntro: document.querySelector("#lineupIntro"),
@@ -359,6 +362,7 @@ function setCloudSession(session) {
   try {
     if (!session) {
       localStorage.removeItem(cloudAuthStorageKey);
+      cloudWorkspaceLoadedForSession = false;
       return;
     }
     localStorage.setItem(cloudAuthStorageKey, JSON.stringify(session));
@@ -452,7 +456,9 @@ function updateAccountDialog(message = "") {
   if (els.accountEmailLabel) {
     els.accountEmailLabel.textContent = session?.user?.email || els.accountEmail?.value || "Signed in";
   }
-  if (els.accountSyncMessage) els.accountSyncMessage.textContent = message;
+  if (els.accountSyncMessage) {
+    els.accountSyncMessage.textContent = message || (authGateActive ? "Sign in or create an account to use Lineup." : "");
+  }
 }
 
 function setAccountMode(mode) {
@@ -476,6 +482,61 @@ function openAccountDialog() {
   openDialog(els.accountDialog);
 }
 
+function openRequiredAccountDialog(message = "Sign in or create an account to use Lineup.") {
+  authGateActive = true;
+  document.body.classList.add("auth-required");
+  closeOnboardingTips(false);
+  closeSetlistStartDialog();
+  openAccountDialog();
+  if (window.location.protocol === "file:") {
+    updateAccountDialog("Accounts work on the online app. Open https://www.songleading.net/lineup/index.html to use Lineup with sign-in.");
+    return;
+  }
+  updateAccountDialog(message);
+}
+
+async function finishRequiredAccountFlow(message = "Signed in.") {
+  authGateActive = false;
+  document.body.classList.remove("auth-required");
+  updateAccountDialog(message);
+  closeDialog(els.accountDialog);
+  if (!importedSharedLineup) {
+    openSetlistStartDialog();
+  } else {
+    maybeShowOnboardingTips();
+  }
+}
+
+async function loadCloudOnceForSession() {
+  if (cloudWorkspaceLoadedForSession || importedSharedLineup) return;
+  try {
+    await loadCloudWorkspaceToDevice();
+    cloudWorkspaceLoadedForSession = true;
+  } catch (error) {
+    console.warn("Could not load cloud workspace automatically.", error);
+  }
+}
+
+async function ensureSignedInForApp() {
+  if (!requireAccountForApp) return true;
+  if (window.location.protocol === "file:") {
+    openRequiredAccountDialog();
+    return false;
+  }
+  try {
+    const session = await getValidCloudSession();
+    if (session?.access_token) {
+      setCloudSession(session);
+      await loadCloudOnceForSession();
+      return true;
+    }
+  } catch (error) {
+    console.warn("Account check failed.", error);
+  }
+  openRequiredAccountDialog();
+  return false;
+}
+
 async function signInFromAccountDialog(event) {
   event.preventDefault();
   if (accountMode === "sign-up") {
@@ -493,6 +554,11 @@ async function signInFromAccountDialog(event) {
     });
     if (!session?.access_token) throw new Error("Could not sign in.");
     setCloudSession(session);
+    if (authGateActive) {
+      await loadCloudOnceForSession();
+      await finishRequiredAccountFlow("Signed in. Your saved workspace is ready.");
+      return;
+    }
     await saveCurrentWorkspaceToCloud();
     updateAccountDialog("Signed in. This device was saved to your account.");
   } catch (error) {
@@ -526,6 +592,10 @@ async function createAccountFromDialog() {
     }
     setCloudSession(session);
     await saveCurrentWorkspaceToCloud();
+    if (authGateActive) {
+      await finishRequiredAccountFlow("Account created. Your Lineup workspace is ready.");
+      return;
+    }
     updateAccountDialog("Account created. This device was saved to your account.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not create account.");
@@ -545,6 +615,12 @@ async function recoverPasswordFromAccountDialog() {
     updateAccountDialog("Recovery email sent. SMS recovery depends on the phone provider connected to the account.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not send recovery email.");
+  }
+}
+
+async function openSetlistStartDialogWhenReady() {
+  if (await ensureSignedInForApp()) {
+    openSetlistStartDialog();
   }
 }
 
@@ -1250,6 +1326,7 @@ function renderCoachStep() {
 
 function maybeShowOnboardingTips() {
   if (!els.coachOverlay) return;
+  if (authGateActive || !getCloudSession()) return;
   if (localStorage.getItem(onboardingHiddenStorageKey) === "true") return;
   if (els.setlistStartDialog?.open) return;
   if (!els.coachOverlay.hidden) return;
@@ -1281,8 +1358,13 @@ function advanceOnboardingTips() {
 
 function showIntroThenStart() {
   if (!els.lineupIntro || importedSharedLineup) {
-    if (importedSharedLineup) maybeShowOnboardingTips();
-    else window.setTimeout(openSetlistStartDialog, 120);
+    if (importedSharedLineup) {
+      ensureSignedInForApp().then((allowed) => {
+        if (allowed) maybeShowOnboardingTips();
+      });
+    } else {
+      window.setTimeout(openSetlistStartDialogWhenReady, 120);
+    }
     return;
   }
   window.setTimeout(() => {
@@ -1290,7 +1372,7 @@ function showIntroThenStart() {
     window.setTimeout(() => {
       els.lineupIntro.hidden = true;
       els.setlistStartDialog?.classList.add("from-intro");
-      openSetlistStartDialog();
+      openSetlistStartDialogWhenReady();
       window.setTimeout(() => els.setlistStartDialog?.classList.remove("from-intro"), 700);
     }, 360);
   }, 1050);
@@ -3268,6 +3350,19 @@ function bindEvents() {
   els.accountSignOutButton?.addEventListener("click", () => {
     setCloudSession(null);
     updateAccountDialog("Signed out.");
+    if (requireAccountForApp) {
+      openRequiredAccountDialog("You signed out. Sign in again to use Lineup.");
+    }
+  });
+  els.accountDialog?.addEventListener("cancel", (event) => {
+    if (authGateActive && !getCloudSession()) {
+      event.preventDefault();
+    }
+  });
+  els.accountDialog?.addEventListener("close", () => {
+    if (authGateActive && !getCloudSession()) {
+      window.setTimeout(() => openRequiredAccountDialog(), 0);
+    }
   });
   els.copyShareButton.addEventListener("click", copyShareLink);
   els.downloadLineupFileButton.addEventListener("click", downloadLineupFile);
