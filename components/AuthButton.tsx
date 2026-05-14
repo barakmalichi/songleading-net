@@ -135,7 +135,7 @@ export function AuthButton() {
 
   return (
     <>
-      <span className="inline-flex items-center gap-2">
+      <span className="auth-actions inline-flex items-center gap-2">
         {!session ? (
           <button
             type="button"

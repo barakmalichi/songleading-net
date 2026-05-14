@@ -34,6 +34,7 @@ let sidePanelMode = "library";
 let accountMode = "sign-in";
 let slidePreviewOpen = false;
 let activeSlidePreviewIndex = 0;
+let coachStepIndex = 0;
 
 const els = {
   lineupIntro: document.querySelector("#lineupIntro"),
@@ -74,7 +75,12 @@ const els = {
   setlistStartDialog: document.querySelector("#setlistStartDialog"),
   startNewSetlistButton: document.querySelector("#startNewSetlistButton"),
   openExistingSetlistButton: document.querySelector("#openExistingSetlistButton"),
-  onboardingDialog: document.querySelector("#onboardingDialog"),
+  coachOverlay: document.querySelector("#coachOverlay"),
+  coachSpotlight: document.querySelector("#coachSpotlight"),
+  coachTip: document.querySelector("#coachTip"),
+  coachStep: document.querySelector("#coachStep"),
+  coachTitle: document.querySelector("#coachTitle"),
+  coachText: document.querySelector("#coachText"),
   dismissOnboardingButton: document.querySelector("#dismissOnboardingButton"),
   dontShowTipsButton: document.querySelector("#dontShowTipsButton"),
   categoryFilters: document.querySelector("#categoryFilters"),
@@ -1184,21 +1190,93 @@ function closeSetlistStartDialog() {
   closeDialog(els.setlistStartDialog);
 }
 
+const coachSteps = [
+  {
+    target: () => els.newSongButton,
+    title: "Add a song",
+    text: "Click here to add one song to your library."
+  },
+  {
+    target: () => els.quickAddButton,
+    title: "Build the bank faster",
+    text: "Use Quick Add when you want to paste a whole list at once."
+  },
+  {
+    target: () => els.songBankList?.querySelector(".bank-song") || els.songSearch,
+    title: "Send songs to the setlist",
+    text: "Double-click a song or drag it into the lineup."
+  },
+  {
+    target: () => els.exportButton,
+    title: "Export from here",
+    text: "PDF, DOC, lineup files, print, and slide exports all live in this menu."
+  }
+];
+
+function positionCoachTip() {
+  if (!els.coachOverlay || els.coachOverlay.hidden) return;
+  const step = coachSteps[coachStepIndex];
+  const target = step?.target?.();
+  if (!target || !els.coachTip || !els.coachSpotlight) return;
+
+  const rect = target.getBoundingClientRect();
+  const padding = 10;
+  els.coachSpotlight.style.left = `${Math.max(8, rect.left - padding)}px`;
+  els.coachSpotlight.style.top = `${Math.max(8, rect.top - padding)}px`;
+  els.coachSpotlight.style.width = `${rect.width + padding * 2}px`;
+  els.coachSpotlight.style.height = `${rect.height + padding * 2}px`;
+
+  const tipWidth = Math.min(330, window.innerWidth - 28);
+  const prefersRight = rect.left + rect.width + tipWidth + 28 < window.innerWidth;
+  const left = prefersRight ? rect.right + 18 : Math.max(14, Math.min(window.innerWidth - tipWidth - 14, rect.left));
+  const top = prefersRight
+    ? Math.max(14, Math.min(window.innerHeight - 190, rect.top - 18))
+    : Math.min(window.innerHeight - 190, rect.bottom + 18);
+
+  els.coachTip.style.width = `${tipWidth}px`;
+  els.coachTip.style.left = `${left}px`;
+  els.coachTip.style.top = `${Math.max(14, top)}px`;
+}
+
+function renderCoachStep() {
+  const step = coachSteps[coachStepIndex];
+  if (!step) return;
+  if (els.coachStep) els.coachStep.textContent = `Tip ${coachStepIndex + 1} of ${coachSteps.length}`;
+  if (els.coachTitle) els.coachTitle.textContent = step.title;
+  if (els.coachText) els.coachText.textContent = step.text;
+  if (els.dismissOnboardingButton) els.dismissOnboardingButton.textContent = coachStepIndex === coachSteps.length - 1 ? "Done" : "Next";
+  window.requestAnimationFrame(positionCoachTip);
+}
+
 function maybeShowOnboardingTips() {
-  if (!els.onboardingDialog) return;
+  if (!els.coachOverlay) return;
   if (localStorage.getItem(onboardingHiddenStorageKey) === "true") return;
   if (els.setlistStartDialog?.open) return;
-  if (els.onboardingDialog.open) return;
+  if (!els.coachOverlay.hidden) return;
   window.setTimeout(() => {
     if (!els.setlistStartDialog?.open && localStorage.getItem(onboardingHiddenStorageKey) !== "true") {
-      openDialog(els.onboardingDialog);
+      coachStepIndex = 0;
+      els.coachOverlay.hidden = false;
+      document.body.classList.add("coach-active");
+      renderCoachStep();
     }
-  }, 220);
+  }, 420);
 }
 
 function closeOnboardingTips(keepHidden = false) {
   if (keepHidden) localStorage.setItem(onboardingHiddenStorageKey, "true");
-  closeDialog(els.onboardingDialog);
+  els.coachOverlay.hidden = true;
+  document.body.classList.remove("coach-active");
+}
+
+function advanceOnboardingTips() {
+  if (!els.coachOverlay || els.coachOverlay.hidden) return;
+  if (coachStepIndex >= coachSteps.length - 1) {
+    closeOnboardingTips(false);
+    return;
+  }
+  coachStepIndex += 1;
+  renderCoachStep();
 }
 
 function showIntroThenStart() {
@@ -1211,7 +1289,9 @@ function showIntroThenStart() {
     els.lineupIntro.classList.add("is-leaving");
     window.setTimeout(() => {
       els.lineupIntro.hidden = true;
+      els.setlistStartDialog?.classList.add("from-intro");
       openSetlistStartDialog();
+      window.setTimeout(() => els.setlistStartDialog?.classList.remove("from-intro"), 700);
     }, 360);
   }, 1050);
 }
@@ -2998,7 +3078,9 @@ function bindPanelResize() {
   window.addEventListener("resize", () => {
     const currentWidth = Number(localStorage.getItem(bankWidthStorageKey));
     if (Number.isFinite(currentWidth) && currentWidth > 0) setBankWidth(currentWidth);
+    positionCoachTip();
   });
+  window.addEventListener("scroll", positionCoachTip, { passive: true });
 }
 
 function bindEvents() {
@@ -3479,7 +3561,7 @@ function bindCoreFallbackEvents() {
     closeSetlistStartDialog();
     maybeShowOnboardingTips();
   });
-  bind(els.dismissOnboardingButton, "click", () => closeOnboardingTips(false));
+  bind(els.dismissOnboardingButton, "click", advanceOnboardingTips);
   bind(els.dontShowTipsButton, "click", () => closeOnboardingTips(true));
   bind(els.themeToggle, "click", (event) => {
     event?.stopPropagation?.();

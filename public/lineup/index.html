@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lineup by Barak Malichi</title>
-    <link rel="stylesheet" href="./styles.css?v=114" />
+    <link rel="stylesheet" href="./styles.css?v=115" />
   </head>
   <body>
     <div id="lineupIntro" class="lineup-intro" role="status" aria-live="polite">
@@ -727,7 +727,7 @@
         <div class="dialog-header">
           <div>
             <p class="eyebrow">Start</p>
-            <h2>What do you want to do?</h2>
+        <h2>What would you like to do?</h2>
           </div>
         </div>
         <div class="start-choice-grid">
@@ -743,42 +743,18 @@
       </form>
     </dialog>
 
-    <dialog id="onboardingDialog" class="song-dialog onboarding-dialog">
-      <form method="dialog">
-        <div class="dialog-header">
-          <div>
-            <p class="eyebrow">Tips</p>
-            <h2>Getting started</h2>
-          </div>
-          <button class="icon-button" type="button" data-close-dialog aria-label="Close" title="Close">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div class="onboarding-tip-list">
-          <article>
-            <strong>Add songs fast</strong>
-            <span>Use + for one song, Quick Add for a pasted list, or double-click a song in the library.</span>
-          </article>
-          <article>
-            <strong>Shape the setlist</strong>
-            <span>Drag songs and notes to reorder them. Double-click a lineup song to remove it.</span>
-          </article>
-          <article>
-            <strong>Slides stay connected</strong>
-            <span>Use the Slides button on a song row to create or edit its lyric slides.</span>
-          </article>
-          <article>
-            <strong>Export from one place</strong>
-            <span>Lineup files, PDFs, documents, print, and full slide exports live in Export.</span>
-          </article>
-        </div>
-        <div class="dialog-actions compact">
+    <div id="coachOverlay" class="coach-overlay" hidden aria-live="polite">
+      <div id="coachSpotlight" class="coach-spotlight" aria-hidden="true"></div>
+      <section id="coachTip" class="coach-tip" role="status">
+        <p class="coach-step" id="coachStep">Tip 1 of 4</p>
+        <h2 id="coachTitle">Add a song</h2>
+        <p id="coachText">Click here to add a song.</p>
+        <div class="coach-actions">
           <button class="ghost-button" type="button" id="dontShowTipsButton">Don't show tips again</button>
-          <span></span>
-          <button class="primary-button" type="button" id="dismissOnboardingButton">Got it</button>
+          <button class="primary-button" type="button" id="dismissOnboardingButton">Next</button>
         </div>
-      </form>
-    </dialog>
+      </section>
+    </div>
 
     <dialog id="shareDialog" class="song-dialog">
       <form method="dialog" class="share-form">
@@ -828,6 +804,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=114"></script>
+    <script src="./app.js?v=115"></script>
   </body>
 </html>

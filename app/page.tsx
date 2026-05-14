@@ -10,6 +10,7 @@ import {
   Users,
   Wrench
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { AuthButton } from "@/components/AuthButton";
 import { ContactDialog } from "@/components/ContactDialog";
 
@@ -94,7 +95,7 @@ export default function HomePage() {
             <h1 className="hero-heading max-w-5xl text-5xl font-black leading-[0.94] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
               The home of modern <span>songleading</span>
             </h1>
-            <p className="mt-6 max-w-2xl text-2xl font-black text-white sm:text-3xl">Music. Energy. Community.</p>
+            <p className="mt-6 max-w-3xl text-2xl font-black text-white sm:text-3xl">Plan smarter. Lead better. Make them sing.</p>
             <p className="mt-5 max-w-2xl text-lg font-semibold leading-8 text-white/78">
               Plan, teach, gather ideas, and go on stage more prepared.
             </p>
@@ -118,11 +119,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="scroll-reveal mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
-        {focusAreas.map((area) => {
+      <section className="focus-section scroll-reveal mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
+        {focusAreas.map((area, index) => {
           const Icon = area.icon;
           return (
-            <article key={area.title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <article key={area.title} className="focus-card rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" style={{ "--card-index": index } as CSSProperties}>
               <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-600 text-white">
                 <Icon size={21} />
               </div>
@@ -133,7 +134,7 @@ export default function HomePage() {
         })}
       </section>
 
-      <section id="training" className="scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <section id="training" className="story-section scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <img src="/media/generated/training-workshop.png" alt="" className="h-full min-h-[420px] w-full object-cover" />
         </div>
@@ -154,14 +155,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="resources" className="scroll-reveal bg-white py-16">
+      <section id="resources" className="resources-section scroll-reveal bg-white py-16">
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div>
               <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Resources</p>
               <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">Useful ideas.</h2>
             </div>
-            <p className="max-w-lg text-base font-semibold leading-7 text-slate-600">Things you can actually use.</p>
+            <p className="max-w-lg text-base font-semibold leading-7 text-slate-600">Things you can use.</p>
           </div>
           <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {resourceCards.map((item) => (
@@ -176,7 +177,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="tools" className="scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
+      <section id="tools" className="tools-section scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Tools</p>
           <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">Plan the moment before you lead it.</h2>
@@ -228,7 +229,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="community" className="scroll-reveal bg-[#111827] py-16 text-white">
+      <section id="community" className="community-section scroll-reveal bg-[#111827] py-16 text-white">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 md:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
             <img src="/media/generated/community-circle.png" alt="" className="h-full min-h-[380px] w-full object-cover opacity-90" />
