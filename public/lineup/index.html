@@ -450,22 +450,22 @@
       </form>
     </dialog>
 
-    <dialog id="accountDialog" class="song-dialog utility-dialog">
+    <dialog id="accountDialog" class="song-dialog utility-dialog account-dialog">
       <form method="dialog" id="accountForm">
         <div class="dialog-header">
           <div>
             <p class="eyebrow">Account</p>
-            <h2 id="accountDialogTitle">Sync</h2>
+            <h2 id="accountDialogTitle">Sign in</h2>
           </div>
           <button class="icon-button" type="button" data-close-dialog aria-label="Close" title="Close">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <p class="utility-copy">Use this only when you want the same songs, lineups, and slides on another device.</p>
+        <p class="utility-copy" id="accountDialogCopy">Sign in to use Lineup and keep your setlists, songs, and slides saved to your account.</p>
         <div id="accountSignedOut" class="account-sync-panel">
           <div class="account-mode-actions" role="tablist" aria-label="Account mode">
             <button class="account-mode-button active" type="button" id="accountSignInModeButton">Sign in</button>
-            <button class="account-mode-button primary" type="button" id="accountSignUpModeButton">Sign Up</button>
+            <button class="account-mode-button" type="button" id="accountSignUpModeButton">Sign Up</button>
           </div>
           <div id="accountSignupFields" class="account-signup-fields" hidden>
             <label>
@@ -507,11 +507,11 @@
           </div>
           <label>
             <span>Email</span>
-            <input id="accountEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+            <input id="accountEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
           </label>
           <label>
             <span>Password</span>
-            <input id="accountPassword" type="password" autocomplete="current-password" />
+            <input id="accountPassword" type="password" autocomplete="current-password" required />
           </label>
           <button class="link-button" type="button" id="accountRecoverButton">Forgot password?</button>
           <div class="dialog-actions compact">

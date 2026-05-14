@@ -142,6 +142,7 @@ const els = {
   accountDialog: document.querySelector("#accountDialog"),
   accountForm: document.querySelector("#accountForm"),
   accountDialogTitle: document.querySelector("#accountDialogTitle"),
+  accountDialogCopy: document.querySelector("#accountDialogCopy"),
   accountSignedOut: document.querySelector("#accountSignedOut"),
   accountSignedIn: document.querySelector("#accountSignedIn"),
   accountEmail: document.querySelector("#accountEmail"),
@@ -446,11 +447,19 @@ function updateAccountDialog(message = "") {
   if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
   if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
   if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
+  if (els.accountDialogCopy) {
+    els.accountDialogCopy.textContent = session
+      ? "Your setlists, songs, and slides are connected to this account."
+      : accountMode === "sign-up"
+        ? "Create an account to use Lineup and keep your work saved across devices."
+        : "Sign in to use Lineup and open your saved setlists, songs, and slides.";
+  }
   if (els.accountSignupFields) els.accountSignupFields.hidden = accountMode !== "sign-up";
   if (els.accountSignInModeButton) els.accountSignInModeButton.classList.toggle("active", accountMode === "sign-in");
   if (els.accountSignUpModeButton) els.accountSignUpModeButton.classList.toggle("active", accountMode === "sign-up");
   if (els.accountCreateButton) els.accountCreateButton.hidden = accountMode !== "sign-up";
   if (els.accountSubmitButton) els.accountSubmitButton.textContent = accountMode === "sign-up" ? "Create account" : "Sign in";
+  if (els.accountPassword) els.accountPassword.autocomplete = accountMode === "sign-up" ? "new-password" : "current-password";
   if (els.accountRecoverButton) els.accountRecoverButton.hidden = accountMode === "sign-up";
   updateAccountUseCaseFields();
   if (els.accountEmailLabel) {

@@ -2358,15 +2358,20 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .account-mode-button {
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
   font-weight: 900;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
 .account-mode-button.active,
@@ -2376,10 +2381,19 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   background: color-mix(in srgb, var(--green) 14%, transparent);
 }
 
-.account-mode-button.primary {
+.account-mode-button.active {
   color: #071428;
   background: var(--green);
   border-color: var(--green);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+:root[data-skin="premium"] .account-mode-button.active {
+  color: #1a1205;
+}
+
+.account-mode-button:active {
+  transform: scale(0.985);
 }
 
 .account-signup-fields {
@@ -2428,6 +2442,15 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
 .utility-dialog {
   width: min(620px, calc(100vw - 28px));
+}
+
+.account-dialog {
+  width: min(540px, calc(100vw - 28px));
+}
+
+.account-dialog form {
+  max-height: min(760px, calc(100dvh - 28px));
+  overflow: auto;
 }
 
 .utility-copy {
@@ -3953,6 +3976,49 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
   .dialog-actions span {
     display: none;
+  }
+
+  .account-dialog {
+    width: calc(100vw - 18px);
+    max-width: none;
+  }
+
+  .account-dialog form {
+    gap: 12px;
+    padding: 18px;
+    max-height: calc(100dvh - 18px);
+    overflow-y: auto;
+  }
+
+  .account-dialog .dialog-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .account-dialog .dialog-header h2 {
+    font-size: clamp(1.5rem, 8vw, 2.2rem);
+    line-height: 1;
+  }
+
+  .account-dialog .utility-copy {
+    font-size: 0.88rem;
+  }
+
+  .account-dialog .account-mode-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .account-dialog .account-mode-button {
+    min-height: 44px;
+  }
+
+  .account-dialog .dialog-actions.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .account-dialog .dialog-actions.compact .primary-button,
+  .account-dialog .dialog-actions.compact .ghost-button {
+    width: 100%;
   }
 
   .theme-export-grid {
