@@ -1399,6 +1399,7 @@ function maybeShowOnboardingTips() {
 
 function closeOnboardingTips(keepHidden = false) {
   if (keepHidden) localStorage.setItem(onboardingHiddenStorageKey, "true");
+  if (!els.coachOverlay) return;
   els.coachOverlay.hidden = true;
   document.body.classList.remove("coach-active");
 }
@@ -1413,8 +1414,74 @@ function advanceOnboardingTips() {
   renderCoachStep();
 }
 
+function getCurrentCoachTarget() {
+  const step = coachSteps[coachStepIndex];
+  const target = step?.target?.();
+  return target instanceof HTMLElement ? target : null;
+}
+
+function handleCoachOverlayClick(event) {
+  if (!els.coachOverlay || els.coachOverlay.hidden) return;
+  if (event.target.closest?.(".coach-tip")) return;
+
+  const target = getCurrentCoachTarget();
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const padding = 14;
+  const x = event.clientX;
+  const y = event.clientY;
+  const withinTarget =
+    x >= rect.left - padding &&
+    x <= rect.right + padding &&
+    y >= rect.top - padding &&
+    y <= rect.bottom + padding;
+
+  if (!withinTarget) return;
+  event.preventDefault();
+  event.stopPropagation();
+  target.click();
+  window.setTimeout(advanceOnboardingTips, 80);
+}
+
+function bindOnboardingControlEvents() {
+  if (document.body.dataset.coachControlsBound) return;
+  document.body.dataset.coachControlsBound = "true";
+
+  els.coachTip?.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  els.dismissOnboardingButton?.addEventListener(
+    "click",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      advanceOnboardingTips();
+    },
+    true
+  );
+  els.dontShowTipsButton?.addEventListener(
+    "click",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      closeOnboardingTips(true);
+    },
+    true
+  );
+  els.coachOverlay?.addEventListener("click", handleCoachOverlayClick);
+}
+
+function finishIntro() {
+  document.body.classList.remove("intro-active");
+  document.body.classList.add("intro-complete");
+  if (els.lineupIntro) els.lineupIntro.hidden = true;
+}
+
 function showIntroThenStart() {
   if (!els.lineupIntro || importedSharedLineup) {
+    finishIntro();
     if (importedSharedLineup) {
       ensureSignedInForApp().then((allowed) => {
         if (allowed) maybeShowOnboardingTips();
@@ -1427,12 +1494,12 @@ function showIntroThenStart() {
   window.setTimeout(() => {
     els.lineupIntro.classList.add("is-leaving");
     window.setTimeout(() => {
-      els.lineupIntro.hidden = true;
+      finishIntro();
       els.setlistStartDialog?.classList.add("from-intro");
       openSetlistStartDialogWhenReady();
       window.setTimeout(() => els.setlistStartDialog?.classList.remove("from-intro"), 700);
     }, 360);
-  }, 1050);
+  }, 680);
 }
 
 function isMobileLayout() {
@@ -4214,6 +4281,7 @@ window.closeDialog = closeDialog;
 function startApp() {
   bindEmergencyButtonDelegates();
   bindCoreFallbackEvents();
+  bindOnboardingControlEvents();
   bindPointerDragFallback();
 
   try {
@@ -4239,7 +4307,9 @@ function startApp() {
     }
   } catch (error) {
     console.error("Could not start the lineup app.", error);
+    finishIntro();
     bindCoreFallbackEvents();
+    bindOnboardingControlEvents();
     document.body.classList.add("app-start-error");
     toast("Something blocked the app from starting. Refresh once, and if it stays stuck tell me.");
   }

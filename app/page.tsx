@@ -45,7 +45,7 @@ const trainingCards = ["Camps", "Youth groups", "Schools", "Services", "Retreats
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#f7f2e7] text-slate-950">
+    <main className="modern-home min-h-screen bg-[#f7f2e7] text-slate-950">
       <section className="hero-section relative min-h-[92vh] overflow-hidden bg-slate-950 text-white">
         <img
           src="/media/generated/hero-songleader.png"
@@ -55,7 +55,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/35 to-slate-950/88" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.25),transparent_30%)]" />
 
-        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 md:px-8">
+        <header className="site-header relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 md:px-8">
           <a href="/" className="flex items-center gap-3 font-black tracking-tight">
             <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
               <Music2 size={22} />
@@ -91,9 +91,9 @@ export default function HomePage() {
         </header>
 
         <div className="relative z-10 mx-auto flex min-h-[74vh] w-full max-w-7xl items-center px-5 pb-16 pt-8 md:px-8">
-          <div className="hero-copy">
+          <div className="hero-copy hero-copy-modern">
             <h1 className="hero-heading max-w-5xl text-5xl font-black leading-[0.94] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
-              The home of modern <span>songleading</span>
+              The home of modern <span className="songleading-shine">SONGLEADING</span>
             </h1>
             <p className="mt-6 max-w-3xl text-2xl font-black text-white sm:text-3xl">Plan smarter. Lead better. Make them sing.</p>
             <p className="mt-5 max-w-2xl text-lg font-semibold leading-8 text-white/78">
@@ -119,7 +119,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="focus-section scroll-reveal mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
+      <section className="focus-section reveal-arc mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
         {focusAreas.map((area, index) => {
           const Icon = area.icon;
           return (
@@ -134,11 +134,11 @@ export default function HomePage() {
         })}
       </section>
 
-      <section id="training" className="story-section scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+      <section id="training" className="story-section reveal-split mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div className="story-image-frame overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <img src="/media/generated/training-workshop.png" alt="" className="h-full min-h-[420px] w-full object-cover" />
         </div>
-        <div>
+        <div className="story-copy">
           <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Training</p>
           <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">Master Songleading</h2>
           <p className="mt-5 max-w-2xl text-lg font-semibold leading-8 text-slate-600">
@@ -147,7 +147,7 @@ export default function HomePage() {
           </p>
           <div className="mt-7 flex flex-wrap gap-2">
             {trainingCards.map((item) => (
-              <span key={item} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">
+              <span key={item} className="training-pill rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">
                 {item}
               </span>
             ))}
@@ -155,7 +155,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="resources" className="resources-section scroll-reveal bg-white py-16">
+      <section id="resources" className="resources-section reveal-cascade bg-white py-16">
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div>
@@ -166,7 +166,7 @@ export default function HomePage() {
           </div>
           <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {resourceCards.map((item) => (
-              <article key={item} className="group rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:bg-blue-50">
+              <article key={item} className="resource-card group rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:bg-blue-50">
                 <div className="flex items-center justify-between gap-4">
                   <h3 className="text-xl font-black">{item}</h3>
                   <BookOpenText size={20} className="text-blue-600 transition group-hover:translate-x-0.5" />
@@ -177,7 +177,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="tools" className="tools-section scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
+      <section id="tools" className="tools-section reveal-tools mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Tools</p>
           <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">Plan the moment before you lead it.</h2>
@@ -192,8 +192,8 @@ export default function HomePage() {
             <Rows3 size={18} />
           </a>
         </div>
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-4 shadow-xl">
-          <div className="rounded-2xl border border-white/10 bg-[#07111f] p-5 text-white">
+        <div className="tools-preview overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-4 shadow-xl">
+          <div className="tools-preview-inner rounded-2xl border border-white/10 bg-[#07111f] p-5 text-white">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">Lineup</p>
@@ -207,7 +207,7 @@ export default function HomePage() {
                 ["2", "Welcome moment", "", ""],
                 ["3", "Hashkiveinu", "Capo 4", "E"]
               ].map(([number, title, capo, key]) => (
-                <div key={title} className="grid grid-cols-[34px_1fr_auto_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/8 px-4 py-3">
+                <div key={title} className="lineup-preview-row grid grid-cols-[34px_1fr_auto_auto] items-center gap-3 rounded-xl border border-white/10 bg-white/8 px-4 py-3">
                   <span className="font-black text-blue-300">{number}</span>
                   <span className="font-black">{title}</span>
                   <span className="text-sm font-bold text-white/65">{capo}</span>
@@ -219,7 +219,7 @@ export default function HomePage() {
               <p className="text-sm font-black text-blue-200">Slides preview</p>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {["Lyrics", "Design", "Present"].map((item) => (
-                  <div key={item} className="rounded-lg bg-white px-3 py-5 text-center text-sm font-black text-slate-950">
+                  <div key={item} className="slide-preview-tile rounded-lg bg-white px-3 py-5 text-center text-sm font-black text-slate-950">
                     {item}
                   </div>
                 ))}
@@ -229,9 +229,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="community" className="community-section scroll-reveal bg-[#111827] py-16 text-white">
+      <section id="community" className="community-section reveal-orbit bg-[#111827] py-16 text-white">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 md:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+          <div className="community-image-frame overflow-hidden rounded-3xl border border-white/10 bg-white/5">
             <img src="/media/generated/community-circle.png" alt="" className="h-full min-h-[380px] w-full object-cover opacity-90" />
           </div>
           <div>
@@ -243,7 +243,7 @@ export default function HomePage() {
             </p>
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               {["Belonging", "Ritual", "Joy"].map((item) => (
-                <div key={item} className="rounded-2xl border border-white/12 bg-white/8 p-5">
+                <div key={item} className="community-card rounded-2xl border border-white/12 bg-white/8 p-5">
                   <Users size={20} className="text-blue-300" />
                   <p className="mt-4 text-lg font-black">{item}</p>
                 </div>
@@ -253,7 +253,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="scroll-reveal mx-auto max-w-7xl px-5 py-14 md:px-8">
+      <section className="final-cta reveal-pop mx-auto max-w-7xl px-5 py-14 md:px-8">
         <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm md:flex md:items-center md:justify-between md:gap-8">
           <div>
             <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Start here</p>

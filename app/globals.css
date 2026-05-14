@@ -70,48 +70,433 @@ select:focus-visible {
   animation: hero-rise 800ms ease-out both;
 }
 
-.hero-heading span {
-  color: #bfdbfe;
-  text-shadow: 0 0 34px rgba(96, 165, 250, 0.28);
+.hero-heading .songleading-shine {
+  display: inline-block;
+  color: transparent;
+  background: linear-gradient(100deg, #bfdbfe 0%, #bfdbfe 36%, #ffffff 48%, #dbeafe 54%, #bfdbfe 66%, #bfdbfe 100%);
+  background-size: 240% 100%;
+  background-position: 120% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 0 34px rgba(96, 165, 250, 0.34);
+  animation: songleading-letter-shine 2.7s ease-in-out infinite;
+}
+@keyframes songleading-letter-shine {
+  0%,
+  30% {
+    background-position: 120% 50%;
+  }
+  70%,
+  100% {
+    background-position: -120% 50%;
+  }
 }
 
-.scroll-reveal {
-  animation: section-reveal both cubic-bezier(0.2, 0.8, 0.2, 1);
+
+.site-header {
+  animation: header-drop 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both 120ms;
+}
+
+.hero-copy-modern > * {
+  animation: hero-word-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero-copy-modern > *:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.hero-copy-modern > *:nth-child(3) {
+  animation-delay: 210ms;
+}
+
+.hero-copy-modern > *:nth-child(4) {
+  animation-delay: 310ms;
+}
+
+.reveal-arc,
+.reveal-split,
+.reveal-cascade,
+.reveal-tools,
+.reveal-orbit,
+.reveal-pop {
   animation-timeline: view();
-  animation-range: entry 6% cover 42%;
+  animation-fill-mode: both;
 }
 
-.focus-card {
-  animation: card-fan both cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation-delay: calc(var(--card-index, 0) * 90ms);
+.reveal-arc {
+  perspective: 1200px;
+}
+
+.reveal-arc .focus-card {
+  animation: arc-card-arrive both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-delay: calc(var(--card-index, 0) * 80ms);
   animation-timeline: view();
-  animation-range: entry 4% cover 36%;
-  transform-origin: 50% 100%;
+  animation-range: entry 0% cover 42%;
 }
 
-.story-section img {
-  animation: image-pan both ease-out;
+.reveal-arc .focus-card:nth-child(1) {
+  --arc-x: -90px;
+  --arc-rotate: -7deg;
+}
+
+.reveal-arc .focus-card:nth-child(2) {
+  --arc-x: 0px;
+  --arc-rotate: 0deg;
+  animation-range: entry 5% cover 47%;
+}
+
+.reveal-arc .focus-card:nth-child(3) {
+  --arc-x: 90px;
+  --arc-rotate: 7deg;
+  animation-range: entry 10% cover 52%;
+}
+
+.story-image-frame {
+  position: relative;
+  clip-path: inset(0 100% 0 0 round 24px);
+  animation: image-curtain both cubic-bezier(0.2, 0.8, 0.2, 1);
   animation-timeline: view();
-  animation-range: entry 0% cover 68%;
-  will-change: transform;
+  animation-range: entry -4% cover 54%;
 }
 
-.resources-section article {
-  animation: tile-rise both cubic-bezier(0.22, 1, 0.36, 1);
+.story-image-frame::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.58), transparent 64%);
+  content: "";
+  mix-blend-mode: screen;
+  transform: translateX(-120%);
+  animation: image-glint both ease-out;
+  animation-timeline: view();
+  animation-range: entry 8% cover 44%;
+}
+
+.story-copy {
+  animation: copy-slide-in both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 4% cover 48%;
+}
+
+.training-pill {
+  animation: pill-pop both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 18% cover 34%;
+  transform-origin: center;
+}
+
+.training-pill:nth-child(2n) {
+  animation-range: entry 22% cover 38%;
+}
+
+.reveal-cascade > div > div:first-child {
+  animation: headline-wipe both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 0% cover 42%;
+}
+
+.resource-card {
+  transform-origin: 50% 115%;
+  animation: resource-card-cascade both cubic-bezier(0.18, 1, 0.24, 1);
   animation-timeline: view();
   animation-range: entry 8% cover 34%;
 }
 
-.tools-section > div:last-child {
-  animation: tool-float both cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation-timeline: view();
-  animation-range: entry 0% cover 58%;
+.resource-card:nth-child(3n + 1) {
+  --resource-x: -54px;
+  --resource-rotate: -4deg;
 }
 
-.community-section img {
-  animation: community-glide both ease-out;
+.resource-card:nth-child(3n + 2) {
+  --resource-x: 0px;
+  --resource-rotate: 2deg;
+  animation-range: entry 12% cover 38%;
+}
+
+.resource-card:nth-child(3n) {
+  --resource-x: 54px;
+  --resource-rotate: 4deg;
+  animation-range: entry 16% cover 42%;
+}
+
+.reveal-tools > div:first-child {
+  animation: tool-copy-in both cubic-bezier(0.18, 1, 0.24, 1);
   animation-timeline: view();
-  animation-range: entry 0% cover 60%;
+  animation-range: entry 0% cover 48%;
+}
+
+.tools-preview {
+  position: relative;
+  transform-origin: center right;
+  animation: tool-stage-in both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry -2% cover 58%;
+}
+
+.tools-preview::before {
+  position: absolute;
+  inset: -30% -45%;
+  background: conic-gradient(from 140deg, transparent, rgba(59, 130, 246, 0.38), transparent 32%);
+  content: "";
+  opacity: 0.68;
+  animation: tool-halo-spin 8s linear infinite;
+}
+
+.tools-preview-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.lineup-preview-row {
+  animation: lineup-row-build both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 16% cover 40%;
+}
+
+.lineup-preview-row:nth-child(2) {
+  animation-range: entry 20% cover 44%;
+}
+
+.lineup-preview-row:nth-child(3) {
+  animation-range: entry 24% cover 48%;
+}
+
+.slide-preview-tile {
+  animation: slide-tile-flip both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 22% cover 46%;
+  transform-origin: bottom center;
+}
+
+.slide-preview-tile:nth-child(2) {
+  animation-range: entry 26% cover 50%;
+}
+
+.slide-preview-tile:nth-child(3) {
+  animation-range: entry 30% cover 54%;
+}
+
+.community-image-frame {
+  clip-path: circle(18% at 74% 28%);
+  animation: community-iris both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry -2% cover 54%;
+}
+
+.reveal-orbit .community-card {
+  transform-origin: -40% 50%;
+  animation: community-card-orbit both cubic-bezier(0.18, 1, 0.24, 1);
+  animation-timeline: view();
+  animation-range: entry 14% cover 38%;
+}
+
+.reveal-orbit .community-card:nth-child(2) {
+  animation-range: entry 18% cover 42%;
+}
+
+.reveal-orbit .community-card:nth-child(3) {
+  animation-range: entry 22% cover 46%;
+}
+
+.reveal-pop > div {
+  animation: cta-pop-in both cubic-bezier(0.16, 1, 0.3, 1);
+  animation-timeline: view();
+  animation-range: entry 4% cover 44%;
+}
+
+@keyframes header-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-word-rise {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(30px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes arc-card-arrive {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+    transform: translate3d(var(--arc-x, 0), 92px, 0) rotate(var(--arc-rotate, 0)) rotateX(18deg) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) rotate(0) rotateX(0) scale(1);
+  }
+}
+
+@keyframes image-curtain {
+  from {
+    clip-path: inset(0 100% 0 0 round 24px);
+    transform: translateX(-28px) scale(0.98);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 24px);
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes image-glint {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes copy-slide-in {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateX(64px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes pill-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.72) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0);
+  }
+}
+
+@keyframes headline-wipe {
+  from {
+    opacity: 0;
+    clip-path: inset(0 44% 0 0);
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes resource-card-cascade {
+  from {
+    opacity: 0;
+    filter: blur(12px);
+    transform: translate3d(var(--resource-x, 0), 62px, 0) rotate(var(--resource-rotate, 0)) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) rotate(0) scale(1);
+  }
+}
+
+@keyframes tool-copy-in {
+  from {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tool-stage-in {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+    transform: translate3d(72px, 60px, 0) rotateY(-16deg) rotateZ(2deg) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) rotateY(0) rotateZ(0) scale(1);
+  }
+}
+
+@keyframes tool-halo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lineup-row-build {
+  from {
+    opacity: 0;
+    transform: translateX(42px) scaleX(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+@keyframes slide-tile-flip {
+  from {
+    opacity: 0;
+    transform: perspective(700px) rotateX(52deg) translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(700px) rotateX(0) translateY(0);
+  }
+}
+
+@keyframes community-iris {
+  from {
+    clip-path: circle(18% at 74% 28%);
+    transform: scale(1.04);
+  }
+  to {
+    clip-path: circle(92% at 50% 50%);
+    transform: scale(1);
+  }
+}
+
+@keyframes community-card-orbit {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateX(56px) rotate(8deg) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes cta-pop-in {
+  from {
+    opacity: 0;
+    filter: blur(12px);
+    transform: translateY(54px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes hero-drift {
@@ -223,7 +608,21 @@ select:focus-visible {
   .story-section img,
   .resources-section article,
   .tools-section > div:last-child,
-  .community-section img {
+  .community-section img,
+  .site-header,
+  .hero-copy-modern > *,
+  .story-image-frame,
+  .story-image-frame::after,
+  .story-copy,
+  .training-pill,
+  .resource-card,
+  .tools-preview,
+  .lineup-preview-row,
+  .slide-preview-tile,
+  .community-image-frame,
+  .community-card,
+  .reveal-pop > div,
+  .hero-heading .songleading-shine {
     animation: none !important;
   }
 }

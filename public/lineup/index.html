@@ -4,9 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lineup by Barak Malichi</title>
-    <link rel="stylesheet" href="./styles.css?v=116" />
+    <style>
+      body.intro-active {
+        overflow: hidden;
+      }
+
+      body.intro-active .app-shell {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+    <link rel="stylesheet" href="./styles.css?v=117" />
   </head>
-  <body>
+  <body class="intro-active">
     <div id="lineupIntro" class="lineup-intro" role="status" aria-live="polite">
       <div class="lineup-intro-card">
         <div class="brand-mark intro-mark" aria-hidden="true">
@@ -793,6 +804,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=116"></script>
+    <script src="./app.js?v=117"></script>
   </body>
 </html>
