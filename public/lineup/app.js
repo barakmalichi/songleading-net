@@ -15,6 +15,7 @@ const themeStorageKey = "show-lineup-builder-theme";
 const skinStorageKey = "show-lineup-builder-skin";
 const bankWidthStorageKey = "show-lineup-builder-bank-width";
 const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
+const onboardingHiddenStorageKey = "lineup-onboarding-tips-hidden:v1";
 const appVersion = 7;
 const defaultShowName = "New Setlist";
 
@@ -35,6 +36,7 @@ let slidePreviewOpen = false;
 let activeSlidePreviewIndex = 0;
 
 const els = {
+  lineupIntro: document.querySelector("#lineupIntro"),
   appShell: document.querySelector(".app-shell"),
   showPanel: document.querySelector(".show-panel"),
   bankPanel: document.querySelector(".bank-panel"),
@@ -58,6 +60,7 @@ const els = {
   renameShowButton: document.querySelector("#renameShowButton"),
   exportButton: document.querySelector("#exportButton"),
   exportSlidesButton: document.querySelector("#exportSlidesButton"),
+  exportSlidesFromMenuButton: document.querySelector("#exportSlidesFromMenuButton"),
   slidePreviewToggle: document.querySelector("#slidePreviewToggle"),
   slidePreviewPanel: document.querySelector("#slidePreviewPanel"),
   closeSlidePreviewButton: document.querySelector("#closeSlidePreviewButton"),
@@ -71,6 +74,9 @@ const els = {
   setlistStartDialog: document.querySelector("#setlistStartDialog"),
   startNewSetlistButton: document.querySelector("#startNewSetlistButton"),
   openExistingSetlistButton: document.querySelector("#openExistingSetlistButton"),
+  onboardingDialog: document.querySelector("#onboardingDialog"),
+  dismissOnboardingButton: document.querySelector("#dismissOnboardingButton"),
+  dontShowTipsButton: document.querySelector("#dontShowTipsButton"),
   categoryFilters: document.querySelector("#categoryFilters"),
   songBankList: document.querySelector("#songBankList"),
   songSearch: document.querySelector("#songSearch"),
@@ -1176,6 +1182,38 @@ function openSetlistStartDialog() {
 
 function closeSetlistStartDialog() {
   closeDialog(els.setlistStartDialog);
+}
+
+function maybeShowOnboardingTips() {
+  if (!els.onboardingDialog) return;
+  if (localStorage.getItem(onboardingHiddenStorageKey) === "true") return;
+  if (els.setlistStartDialog?.open) return;
+  if (els.onboardingDialog.open) return;
+  window.setTimeout(() => {
+    if (!els.setlistStartDialog?.open && localStorage.getItem(onboardingHiddenStorageKey) !== "true") {
+      openDialog(els.onboardingDialog);
+    }
+  }, 220);
+}
+
+function closeOnboardingTips(keepHidden = false) {
+  if (keepHidden) localStorage.setItem(onboardingHiddenStorageKey, "true");
+  closeDialog(els.onboardingDialog);
+}
+
+function showIntroThenStart() {
+  if (!els.lineupIntro || importedSharedLineup) {
+    if (importedSharedLineup) maybeShowOnboardingTips();
+    else window.setTimeout(openSetlistStartDialog, 120);
+    return;
+  }
+  window.setTimeout(() => {
+    els.lineupIntro.classList.add("is-leaving");
+    window.setTimeout(() => {
+      els.lineupIntro.hidden = true;
+      openSetlistStartDialog();
+    }, 360);
+  }, 1050);
 }
 
 function isMobileLayout() {
@@ -3011,6 +3049,7 @@ function bindEvents() {
 
   els.themeToggle.addEventListener("click", (event) => {
     event.stopPropagation();
+    els.headerMenu.open = false;
     toggleTheme();
   });
 
@@ -3172,6 +3211,10 @@ function bindEvents() {
   els.exportSlidesButton?.addEventListener("click", (event) => {
     event.preventDefault();
     els.headerMenu.open = false;
+    openSlidesExportDialog();
+  });
+  els.exportSlidesFromMenuButton?.addEventListener("click", (event) => {
+    event.preventDefault();
     openSlidesExportDialog();
   });
   els.slidePreviewToggle?.addEventListener("click", (event) => {
@@ -3429,12 +3472,20 @@ function bindCoreFallbackEvents() {
     createNewShow();
     setSidePanelMode("library");
     closeSetlistStartDialog();
+    maybeShowOnboardingTips();
   });
   bind(els.openExistingSetlistButton, "click", () => {
     setSidePanelMode("shows");
     closeSetlistStartDialog();
+    maybeShowOnboardingTips();
   });
-  bind(els.themeToggle, "click", toggleTheme);
+  bind(els.dismissOnboardingButton, "click", () => closeOnboardingTips(false));
+  bind(els.dontShowTipsButton, "click", () => closeOnboardingTips(true));
+  bind(els.themeToggle, "click", (event) => {
+    event?.stopPropagation?.();
+    els.headerMenu.open = false;
+    toggleTheme();
+  });
 }
 
 function bindPointerDragFallback() {
@@ -3599,7 +3650,7 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
-      if (control.id === "exportSlidesButton") {
+      if (control.id === "exportSlidesButton" || control.id === "exportSlidesFromMenuButton") {
         handled();
         openSlidesExportDialog();
         return;
@@ -3947,8 +3998,9 @@ function startApp() {
     if (importedSharedLineup) {
       toast("Shared lineup opened and saved here.");
       history.replaceState(null, "", window.location.href.split("#")[0]);
+      maybeShowOnboardingTips();
     } else {
-      window.setTimeout(openSetlistStartDialog, 120);
+      showIntroThenStart();
     }
   } catch (error) {
     console.error("Could not start the lineup app.", error);

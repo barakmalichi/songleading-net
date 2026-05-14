@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { AuthButton } from "@/components/AuthButton";
 import { ContactDialog } from "@/components/ContactDialog";
-import { EditableFieldNotes } from "@/components/EditableFieldNotes";
 
 const focusAreas = [
   {
@@ -46,11 +45,11 @@ const trainingCards = ["Camps", "Youth groups", "Schools", "Services", "Retreats
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#f7f2e7] text-slate-950">
-      <section className="relative min-h-[92vh] overflow-hidden bg-slate-950 text-white">
+      <section className="hero-section relative min-h-[92vh] overflow-hidden bg-slate-950 text-white">
         <img
           src="/media/generated/hero-songleader.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover opacity-72"
+          className="hero-art absolute inset-0 h-full w-full object-cover opacity-72"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/35 to-slate-950/88" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.25),transparent_30%)]" />
@@ -90,22 +89,21 @@ export default function HomePage() {
           </div>
         </header>
 
-        <div className="relative z-10 mx-auto grid min-h-[74vh] w-full max-w-7xl content-center gap-10 px-5 pb-16 pt-8 md:px-8 lg:grid-cols-[1.1fr_0.8fr]">
-          <div>
-            <p className="text-sm font-black uppercase tracking-[0.26em] text-blue-200">The home of modern songleading</p>
-            <h1 className="mt-5 max-w-4xl text-6xl font-black leading-[0.9] tracking-tight sm:text-7xl md:text-8xl lg:text-9xl">
-              SONGLEADING
+        <div className="relative z-10 mx-auto flex min-h-[74vh] w-full max-w-7xl items-center px-5 pb-16 pt-8 md:px-8">
+          <div className="hero-copy">
+            <h1 className="hero-heading max-w-5xl text-5xl font-black leading-[0.94] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
+              The home of modern <span>songleading</span>
             </h1>
             <p className="mt-6 max-w-2xl text-2xl font-black text-white sm:text-3xl">Music. Energy. Community.</p>
             <p className="mt-5 max-w-2xl text-lg font-semibold leading-8 text-white/78">
-              A simple place for songleaders to plan, teach, gather ideas, and go on stage more prepared.
+              Plan, teach, gather ideas, and go on stage more prepared.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
                 href="/lineup/index.html"
                 className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-blue-50"
               >
-                Open Lineup app
+                Start Planning
                 <ArrowRight size={18} />
               </a>
               <a
@@ -117,12 +115,10 @@ export default function HomePage() {
               </a>
             </div>
           </div>
-
-          <EditableFieldNotes />
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
+      <section className="scroll-reveal mx-auto grid max-w-7xl gap-4 px-5 py-12 md:px-8 lg:grid-cols-3">
         {focusAreas.map((area) => {
           const Icon = area.icon;
           return (
@@ -137,7 +133,7 @@ export default function HomePage() {
         })}
       </section>
 
-      <section id="training" className="mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <section id="training" className="scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-12 md:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <img src="/media/generated/training-workshop.png" alt="" className="h-full min-h-[420px] w-full object-cover" />
         </div>
@@ -158,7 +154,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="resources" className="bg-white py-16">
+      <section id="resources" className="scroll-reveal bg-white py-16">
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div>
@@ -180,7 +176,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="tools" className="mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
+      <section id="tools" className="scroll-reveal mx-auto grid max-w-7xl gap-10 px-5 py-16 md:px-8 lg:grid-cols-[1fr_1fr] lg:items-center">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Tools</p>
           <h2 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">Plan the moment before you lead it.</h2>
@@ -191,7 +187,7 @@ export default function HomePage() {
             href="/lineup/index.html"
             className="mt-7 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-blue-700"
           >
-            Open Lineup + Slides
+            Start Planning
             <Rows3 size={18} />
           </a>
         </div>
@@ -232,7 +228,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="community" className="bg-[#111827] py-16 text-white">
+      <section id="community" className="scroll-reveal bg-[#111827] py-16 text-white">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 md:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
             <img src="/media/generated/community-circle.png" alt="" className="h-full min-h-[380px] w-full object-cover opacity-90" />
@@ -256,7 +252,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-14 md:px-8">
+      <section className="scroll-reveal mx-auto max-w-7xl px-5 py-14 md:px-8">
         <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm md:flex md:items-center md:justify-between md:gap-8">
           <div>
             <p className="text-sm font-black uppercase tracking-[0.24em] text-blue-600">Start here</p>
@@ -270,7 +266,7 @@ export default function HomePage() {
               href="/lineup/index.html"
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white transition hover:bg-blue-700"
             >
-              Open the app
+              Start Planning
               <CirclePlay size={18} />
             </a>
             <ContactDialog />
