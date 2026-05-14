@@ -5,40 +5,36 @@ import { useEffect, useState } from "react";
 import { ContactDialog } from "@/components/ContactDialog";
 import {
   defaultHomepageAboutContent,
-  homepageAboutStorageKey,
   normalizeHomepageAboutContent,
   type HomepageAboutContent
 } from "@/lib/homepageContent";
-
-function readStoredAboutContent() {
-  try {
-    const stored = window.localStorage.getItem(homepageAboutStorageKey);
-    if (!stored) return defaultHomepageAboutContent;
-    return normalizeHomepageAboutContent(JSON.parse(stored) as Partial<HomepageAboutContent>);
-  } catch {
-    return defaultHomepageAboutContent;
-  }
-}
 
 export function HomeAboutSection() {
   const [content, setContent] = useState<HomepageAboutContent>(defaultHomepageAboutContent);
 
   useEffect(() => {
-    setContent(readStoredAboutContent());
+    let active = true;
 
-    function handleStorage(event: StorageEvent) {
-      if (event.key === homepageAboutStorageKey) setContent(readStoredAboutContent());
+    async function loadContent() {
+      try {
+        const response = await fetch("/api/homepage/about", { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (active && response.ok) setContent(normalizeHomepageAboutContent(data.content || {}));
+      } catch {
+        if (active) setContent(defaultHomepageAboutContent);
+      }
     }
 
-    function handleLocalUpdate() {
-      setContent(readStoredAboutContent());
+    function handleUpdate(event: Event) {
+      const nextContent = (event as CustomEvent<HomepageAboutContent>).detail;
+      setContent(normalizeHomepageAboutContent(nextContent || {}));
     }
 
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener("homepage-about-updated", handleLocalUpdate);
+    loadContent();
+    window.addEventListener("homepage-about-updated", handleUpdate);
     return () => {
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("homepage-about-updated", handleLocalUpdate);
+      active = false;
+      window.removeEventListener("homepage-about-updated", handleUpdate);
     };
   }, []);
 
