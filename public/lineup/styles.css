@@ -1793,12 +1793,13 @@ body.is-pointer-dragging * {
   background: rgba(0, 0, 0, 0.56);
   backdrop-filter: blur(1px);
   animation: coach-fade 220ms ease both;
-  pointer-events: auto;
-  touch-action: none;
+  pointer-events: none;
+  touch-action: auto;
 }
 
 .coach-spotlight {
   position: fixed;
+  z-index: 1;
   border: 2px solid var(--green);
   border-radius: 16px;
   box-shadow:
@@ -1810,7 +1811,7 @@ body.is-pointer-dragging * {
 
 .coach-tip {
   position: fixed;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   gap: 8px;
   border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
@@ -1869,9 +1870,12 @@ body.is-pointer-dragging * {
 
 .coach-actions .ghost-button,
 .coach-actions .primary-button {
+  position: relative;
+  z-index: 1;
   min-height: 40px;
   padding: 0 12px;
   font-size: 0.82rem;
+  pointer-events: auto;
 }
 
 body.auth-required .app-shell {
