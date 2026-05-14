@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getValidSession } from "@/lib/cloudClient";
+import {
+  defaultHomepageAboutContent,
+  homepageAboutStorageKey,
+  normalizeHomepageAboutContent,
+  type HomepageAboutContent
+} from "@/lib/homepageContent";
 
 type AdminUser = {
   id: string;
@@ -43,6 +49,8 @@ function metadataValue(user: AdminUser, key: string) {
 export function AdminPortal() {
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [message, setMessage] = useState("Loading admin portal...");
+  const [aboutContent, setAboutContent] = useState<HomepageAboutContent>(defaultHomepageAboutContent);
+  const [aboutSaved, setAboutSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -66,6 +74,24 @@ export function AdminPortal() {
     }
     load();
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(homepageAboutStorageKey);
+      if (stored) setAboutContent(normalizeHomepageAboutContent(JSON.parse(stored) as Partial<HomepageAboutContent>));
+    } catch {
+      setAboutContent(defaultHomepageAboutContent);
+    }
+  }, []);
+
+  function saveAboutContent() {
+    const nextContent = normalizeHomepageAboutContent(aboutContent);
+    setAboutContent(nextContent);
+    window.localStorage.setItem(homepageAboutStorageKey, JSON.stringify(nextContent));
+    window.dispatchEvent(new Event("homepage-about-updated"));
+    setAboutSaved(true);
+    window.setTimeout(() => setAboutSaved(false), 1800);
+  }
 
   return (
     <main className="min-h-screen bg-[#f7f2e7] px-5 py-8 text-slate-950 md:px-8">
@@ -91,6 +117,68 @@ export function AdminPortal() {
 
         {data ? (
           <div className="mt-6 grid gap-5">
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Homepage</p>
+                  <h2 className="mt-1 text-2xl font-black">About Section</h2>
+                  <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
+                    Edit the public About block. The portrait field can point to any image in the site, like /media/generated/barak-about-portrait.png.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveAboutContent}
+                  className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white hover:bg-blue-700"
+                >
+                  {aboutSaved ? "Saved" : "Save About"}
+                </button>
+              </div>
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <label className="grid gap-2 text-sm font-black">
+                  Name
+                  <input
+                    value={aboutContent.name}
+                    onChange={(event) => setAboutContent((current) => ({ ...current, name: event.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-black">
+                  Portrait image path
+                  <input
+                    value={aboutContent.image}
+                    onChange={(event) => setAboutContent((current) => ({ ...current, image: event.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-black lg:col-span-2">
+                  Title
+                  <input
+                    value={aboutContent.title}
+                    onChange={(event) => setAboutContent((current) => ({ ...current, title: event.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-black lg:col-span-2">
+                  Bio
+                  <textarea
+                    value={aboutContent.text}
+                    onChange={(event) => setAboutContent((current) => ({ ...current, text: event.target.value }))}
+                    rows={4}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold leading-6 outline-none focus:border-blue-500"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-black lg:col-span-2">
+                  Highlights
+                  <input
+                    value={aboutContent.highlights.join(", ")}
+                    onChange={(event) => setAboutContent((current) => ({ ...current, highlights: event.target.value.split(",") }))}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
+                  />
+                </label>
+              </div>
+            </section>
+
             <section className="grid gap-4 md:grid-cols-3">
               <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Users</p>
@@ -116,6 +204,8 @@ export function AdminPortal() {
                       <th className="border-b border-slate-200 py-3 pr-4">Name</th>
                       <th className="border-b border-slate-200 py-3 pr-4">Phone</th>
                       <th className="border-b border-slate-200 py-3 pr-4">Country</th>
+                      <th className="border-b border-slate-200 py-3 pr-4">Instrument</th>
+                      <th className="border-b border-slate-200 py-3 pr-4">Community</th>
                       <th className="border-b border-slate-200 py-3 pr-4">Use</th>
                       <th className="border-b border-slate-200 py-3 pr-4">Last sign in</th>
                     </tr>
@@ -127,6 +217,8 @@ export function AdminPortal() {
                         <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "full_name")}</td>
                         <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "phone")}</td>
                         <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "country")}</td>
+                        <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "instrument")}</td>
+                        <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "community_institution")}</td>
                         <td className="border-b border-slate-100 py-3 pr-4">{metadataValue(user, "main_use_case")}</td>
                         <td className="border-b border-slate-100 py-3 pr-4">{formatDate(user.last_sign_in_at)}</td>
                       </tr>

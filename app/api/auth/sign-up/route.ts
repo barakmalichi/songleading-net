@@ -17,6 +17,8 @@ export async function POST(request: Request) {
       camp_name: profile.campName || "",
       synagogue_name: profile.synagogueName || "",
       other_use_case: profile.otherUseCase || "",
+      instrument: profile.instrument || "",
+      community_institution: profile.communityInstitution || "",
       role: email.toLowerCase() === ADMIN_EMAIL ? "admin" : "user",
     },
   });

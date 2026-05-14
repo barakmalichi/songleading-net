@@ -16,10 +16,11 @@ export type CloudSession = {
   user?: {
     id?: string;
     email?: string;
+    user_metadata?: Record<string, unknown>;
   };
 };
 
-export type SignupProfile = {
+export type CloudProfile = {
   fullName: string;
   phone: string;
   country: string;
@@ -27,7 +28,25 @@ export type SignupProfile = {
   campName?: string;
   synagogueName?: string;
   otherUseCase?: string;
+  instrument?: string;
+  communityInstitution?: string;
 };
+
+export type SignupProfile = CloudProfile;
+
+export function normalizeCloudProfile(metadata?: Record<string, unknown> | null): CloudProfile {
+  return {
+    fullName: String(metadata?.fullName || metadata?.full_name || ""),
+    phone: String(metadata?.phone || ""),
+    country: String(metadata?.country || ""),
+    useCase: String(metadata?.useCase || metadata?.main_use_case || ""),
+    campName: String(metadata?.campName || metadata?.camp_name || ""),
+    synagogueName: String(metadata?.synagogueName || metadata?.synagogue_name || ""),
+    otherUseCase: String(metadata?.otherUseCase || metadata?.other_use_case || ""),
+    instrument: String(metadata?.instrument || ""),
+    communityInstitution: String(metadata?.communityInstitution || metadata?.community_institution || "")
+  };
+}
 
 export function getStoredSession(): CloudSession | null {
   if (typeof window === "undefined") return null;
@@ -86,6 +105,33 @@ export async function requestPasswordRecovery(email: string, phone?: string) {
     method: "POST",
     body: JSON.stringify({ email, phone })
   });
+}
+
+export async function fetchCloudProfile() {
+  const session = await getValidSession();
+  if (!session) throw new Error("Please sign in first.");
+
+  return apiJson("/api/auth/profile", {
+    headers: { authorization: `Bearer ${session.access_token}` }
+  });
+}
+
+export async function saveCloudProfile(profile: CloudProfile) {
+  const session = await getValidSession();
+  if (!session) throw new Error("Please sign in first.");
+
+  const data = await apiJson("/api/auth/profile", {
+    method: "PUT",
+    headers: { authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ profile })
+  });
+
+  if (data?.session?.access_token) {
+    setStoredSession(data.session);
+  } else if (data?.user) {
+    setStoredSession({ ...session, user: data.user });
+  }
+  return data;
 }
 
 export async function getValidSession() {

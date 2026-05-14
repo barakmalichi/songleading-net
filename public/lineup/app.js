@@ -154,6 +154,8 @@ const els = {
   accountFullName: document.querySelector("#accountFullName"),
   accountPhone: document.querySelector("#accountPhone"),
   accountCountry: document.querySelector("#accountCountry"),
+  accountInstrument: document.querySelector("#accountInstrument"),
+  accountCommunityInstitution: document.querySelector("#accountCommunityInstitution"),
   accountUseCase: document.querySelector("#accountUseCase"),
   accountCampField: document.querySelector("#accountCampField"),
   accountCampName: document.querySelector("#accountCampName"),
@@ -166,6 +168,20 @@ const els = {
   accountRecoverButton: document.querySelector("#accountRecoverButton"),
   accountGuestButton: document.querySelector("#accountGuestButton"),
   accountEmailLabel: document.querySelector("#accountEmailLabel"),
+  accountProfileFullName: document.querySelector("#accountProfileFullName"),
+  accountProfilePhone: document.querySelector("#accountProfilePhone"),
+  accountProfileCountry: document.querySelector("#accountProfileCountry"),
+  accountProfileInstrument: document.querySelector("#accountProfileInstrument"),
+  accountProfileCommunityInstitution: document.querySelector("#accountProfileCommunityInstitution"),
+  accountProfileUseCase: document.querySelector("#accountProfileUseCase"),
+  accountProfileCampField: document.querySelector("#accountProfileCampField"),
+  accountProfileCampName: document.querySelector("#accountProfileCampName"),
+  accountProfileSynagogueField: document.querySelector("#accountProfileSynagogueField"),
+  accountProfileSynagogueName: document.querySelector("#accountProfileSynagogueName"),
+  accountProfileOtherUseCaseField: document.querySelector("#accountProfileOtherUseCaseField"),
+  accountProfileOtherUseCase: document.querySelector("#accountProfileOtherUseCase"),
+  accountRefreshProfileButton: document.querySelector("#accountRefreshProfileButton"),
+  accountSaveProfileButton: document.querySelector("#accountSaveProfileButton"),
   accountSaveCloudButton: document.querySelector("#accountSaveCloudButton"),
   accountLoadCloudButton: document.querySelector("#accountLoadCloudButton"),
   accountSignOutButton: document.querySelector("#accountSignOutButton"),
@@ -288,6 +304,7 @@ function normalizeState(parsed) {
         date: show.date || show.show?.date || new Date().toISOString().slice(0, 10),
         notes: show.notes || show.show?.notes || "",
         team: show.team || show.show?.team || "",
+        draft: Boolean(show.draft),
         lineup: Array.isArray(show.lineup)
           ? show.lineup.map(normalizeLineupItem)
           : [],
@@ -342,8 +359,10 @@ function getSharedStateFromHash() {
 
 function saveState() {
   syncActiveShowFromFields();
+  const current = activeShow();
+  if (current?.draft && !isUnchangedDraftShow(current)) current.draft = false;
   try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    localStorage.setItem(storageKey, JSON.stringify(storageState()));
   } catch (error) {
     console.warn("Lineup could not be stored locally.", error);
   }
@@ -371,6 +390,62 @@ function setCloudSession(session) {
     setGuestSession(false);
     localStorage.setItem(cloudAuthStorageKey, JSON.stringify(session));
   } catch {}
+}
+
+function normalizeAccountProfile(metadata = {}) {
+  return {
+    fullName: metadata.fullName || metadata.full_name || "",
+    phone: metadata.phone || "",
+    country: metadata.country || "",
+    useCase: metadata.useCase || metadata.main_use_case || "",
+    campName: metadata.campName || metadata.camp_name || "",
+    synagogueName: metadata.synagogueName || metadata.synagogue_name || "",
+    otherUseCase: metadata.otherUseCase || metadata.other_use_case || "",
+    instrument: metadata.instrument || "",
+    communityInstitution: metadata.communityInstitution || metadata.community_institution || "",
+  };
+}
+
+function populateAccountProfile(profile = {}) {
+  const normalized = normalizeAccountProfile(profile);
+  if (els.accountProfileFullName) els.accountProfileFullName.value = normalized.fullName;
+  if (els.accountProfilePhone) els.accountProfilePhone.value = normalized.phone;
+  if (els.accountProfileCountry) els.accountProfileCountry.value = normalized.country;
+  if (els.accountProfileInstrument) els.accountProfileInstrument.value = normalized.instrument;
+  if (els.accountProfileCommunityInstitution) els.accountProfileCommunityInstitution.value = normalized.communityInstitution;
+  if (els.accountProfileUseCase) els.accountProfileUseCase.value = normalized.useCase || "Summer camp";
+  if (els.accountProfileCampName) els.accountProfileCampName.value = normalized.campName;
+  if (els.accountProfileSynagogueName) els.accountProfileSynagogueName.value = normalized.synagogueName;
+  if (els.accountProfileOtherUseCase) els.accountProfileOtherUseCase.value = normalized.otherUseCase;
+  updateAccountProfileUseCaseFields();
+}
+
+function collectAccountSignupProfile() {
+  return {
+    fullName: els.accountFullName?.value.trim() || "",
+    phone: els.accountPhone?.value.trim() || "",
+    country: els.accountCountry?.value.trim() || "",
+    useCase: els.accountUseCase?.value || "",
+    campName: els.accountCampName?.value.trim() || "",
+    synagogueName: els.accountSynagogueName?.value.trim() || "",
+    otherUseCase: els.accountOtherUseCase?.value.trim() || "",
+    instrument: els.accountInstrument?.value.trim() || "",
+    communityInstitution: els.accountCommunityInstitution?.value.trim() || "",
+  };
+}
+
+function collectAccountProfile() {
+  return {
+    fullName: els.accountProfileFullName?.value.trim() || "",
+    phone: els.accountProfilePhone?.value.trim() || "",
+    country: els.accountProfileCountry?.value.trim() || "",
+    useCase: els.accountProfileUseCase?.value || "",
+    campName: els.accountProfileCampName?.value.trim() || "",
+    synagogueName: els.accountProfileSynagogueName?.value.trim() || "",
+    otherUseCase: els.accountProfileOtherUseCase?.value.trim() || "",
+    instrument: els.accountProfileInstrument?.value.trim() || "",
+    communityInstitution: els.accountProfileCommunityInstitution?.value.trim() || "",
+  };
 }
 
 function hasGuestSession() {
@@ -430,7 +505,7 @@ async function saveCurrentWorkspaceToCloud() {
   return cloudRequest("/api/workspace", {
     method: "POST",
     headers: { authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({ lineupState: state, studioData }),
+    body: JSON.stringify({ lineupState: storageState(), studioData }),
   });
 }
 
@@ -518,10 +593,18 @@ function updateAccountUseCaseFields() {
   if (els.accountOtherUseCaseField) els.accountOtherUseCaseField.hidden = value !== "Other";
 }
 
+function updateAccountProfileUseCaseFields() {
+  const value = els.accountProfileUseCase?.value || "";
+  if (els.accountProfileCampField) els.accountProfileCampField.hidden = value !== "Summer camp";
+  if (els.accountProfileSynagogueField) els.accountProfileSynagogueField.hidden = value !== "Temple / synagogue";
+  if (els.accountProfileOtherUseCaseField) els.accountProfileOtherUseCaseField.hidden = value !== "Other";
+}
+
 function openAccountDialog() {
   const session = getCloudSession();
   accountMode = "sign-in";
   if (session?.user?.email && els.accountEmail) els.accountEmail.value = session.user.email;
+  populateAccountProfile(session?.user?.user_metadata || {});
   if (els.accountPassword) els.accountPassword.value = "";
   updateAccountDialog();
   openDialog(els.accountDialog);
@@ -611,6 +694,7 @@ async function signInFromAccountDialog(event) {
     });
     if (!session?.access_token) throw new Error("Could not sign in.");
     setCloudSession(session);
+    populateAccountProfile(session.user?.user_metadata || {});
     const cloudResult = await loadCloudWorkspaceOrSeedCurrent();
     if (authGateActive) {
       await finishRequiredAccountFlow(cloudResult.seeded ? "Signed in. Your cloud workspace is ready." : "Signed in. Your cloud workspace is loaded.");
@@ -630,15 +714,7 @@ async function createAccountFromDialog() {
       body: JSON.stringify({
         email: els.accountEmail.value.trim(),
         password: els.accountPassword.value,
-        profile: {
-          fullName: els.accountFullName?.value.trim() || "",
-          phone: els.accountPhone?.value.trim() || "",
-          country: els.accountCountry?.value.trim() || "",
-          useCase: els.accountUseCase?.value || "",
-          campName: els.accountCampName?.value.trim() || "",
-          synagogueName: els.accountSynagogueName?.value.trim() || "",
-          otherUseCase: els.accountOtherUseCase?.value.trim() || "",
-        },
+        profile: collectAccountSignupProfile(),
       }),
     });
     if (!session?.access_token) {
@@ -647,6 +723,7 @@ async function createAccountFromDialog() {
       return;
     }
     setCloudSession(session);
+    populateAccountProfile(session.user?.user_metadata || collectAccountSignupProfile());
     cloudWorkspaceLoadedForSession = true;
     await saveCurrentWorkspaceToCloud();
     if (authGateActive) {
@@ -656,6 +733,43 @@ async function createAccountFromDialog() {
     updateAccountDialog("Account created. This device was saved to your account.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not create account.");
+  }
+}
+
+async function loadAccountProfileFromCloud() {
+  updateAccountDialog("Loading profile...");
+  try {
+    const session = await getValidCloudSession();
+    if (!session) throw new Error("Please sign in first.");
+    const data = await cloudRequest("/api/auth/profile", {
+      headers: { authorization: `Bearer ${session.access_token}` },
+    });
+    const user = data.user || { ...session.user, user_metadata: data.profile || {} };
+    setCloudSession({ ...session, user });
+    populateAccountProfile(data.profile || user.user_metadata || {});
+    updateAccountDialog("Profile loaded.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not load profile.");
+  }
+}
+
+async function saveAccountProfileToCloud() {
+  updateAccountDialog("Saving profile...");
+  try {
+    const session = await getValidCloudSession();
+    if (!session) throw new Error("Please sign in first.");
+    const profile = collectAccountProfile();
+    const data = await cloudRequest("/api/auth/profile", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ profile }),
+    });
+    const user = data.user || data.session?.user || { ...session.user, user_metadata: data.profile || profile };
+    setCloudSession(data.session?.access_token ? data.session : { ...session, user });
+    populateAccountProfile(data.profile || user.user_metadata || profile);
+    updateAccountDialog("Profile saved.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not save profile.");
   }
 }
 
@@ -693,6 +807,36 @@ function syncActiveShowFromFields() {
   show.notes = state.show.notes || "";
   show.team = state.show.team || "";
   show.lineup = state.lineup;
+}
+
+function isUnchangedDraftShow(show) {
+  if (!show?.draft) return false;
+  return (
+    (show.name || "") === defaultShowName &&
+    (show.date || "") === new Date().toISOString().slice(0, 10) &&
+    !(show.notes || "").trim() &&
+    !(show.team || "").trim() &&
+    (!Array.isArray(show.lineup) || show.lineup.length === 0)
+  );
+}
+
+function storageState() {
+  const shows = (state.shows || []).filter((show) => !isUnchangedDraftShow(show));
+  const savedActiveShow = shows.find((show) => show.id === state.activeShowId) || shows[0] || activeShow();
+  return {
+    ...state,
+    activeShowId: savedActiveShow?.id || state.activeShowId,
+    show: savedActiveShow
+      ? {
+          name: savedActiveShow.name,
+          date: savedActiveShow.date,
+          notes: savedActiveShow.notes || "",
+          team: savedActiveShow.team || "",
+        }
+      : state.show,
+    shows: shows.map(({ draft, ...show }) => show),
+    lineup: savedActiveShow?.lineup || state.lineup,
+  };
 }
 
 function commitShowMetaFromFields() {
@@ -1291,14 +1435,17 @@ function renderSavedShows() {
   if (!Array.isArray(state.shows) || !state.shows.length) {
     state = normalizeState({ ...state, shows });
   }
-  els.savedShowsList.innerHTML = shows
+  const visibleShows = shows.filter((show) => !isUnchangedDraftShow(show));
+  els.savedShowsList.innerHTML = visibleShows.length
+    ? visibleShows
     .map((show) => `
       <button class="saved-show-chip ${show.id === state.activeShowId ? "active" : ""}" data-show-id="${show.id}">
         <span>${escapeHtml(show.name)}</span>
         <small>${escapeHtml(formatExportDate(show.date))}</small>
       </button>
     `)
-    .join("");
+    .join("")
+    : '<div class="empty-state"><div><strong>No saved setlists yet.</strong>Change this setlist to save it.</div></div>';
 }
 
 function setSidePanelMode(mode) {
@@ -1316,7 +1463,7 @@ function setSidePanelMode(mode) {
 
 function openSetlistStartDialog() {
   if (!els.setlistStartDialog || importedSharedLineup) return;
-  openDialog(els.setlistStartDialog);
+  closeSetlistStartDialog();
 }
 
 function closeSetlistStartDialog() {
@@ -1390,6 +1537,7 @@ function maybeShowOnboardingTips() {
   window.setTimeout(() => {
     if (!els.setlistStartDialog?.open && localStorage.getItem(onboardingHiddenStorageKey) !== "true") {
       coachStepIndex = 0;
+      localStorage.setItem(onboardingHiddenStorageKey, "true");
       els.coachOverlay.hidden = false;
       document.body.classList.add("coach-active");
       renderCoachStep();
@@ -1398,7 +1546,7 @@ function maybeShowOnboardingTips() {
 }
 
 function closeOnboardingTips(keepHidden = false) {
-  if (keepHidden) localStorage.setItem(onboardingHiddenStorageKey, "true");
+  localStorage.setItem(onboardingHiddenStorageKey, "true");
   if (!els.coachOverlay) return;
   els.coachOverlay.hidden = true;
   document.body.classList.remove("coach-active");
@@ -1487,7 +1635,9 @@ function showIntroThenStart() {
         if (allowed) maybeShowOnboardingTips();
       });
     } else {
-      window.setTimeout(openSetlistStartDialogWhenReady, 120);
+      ensureSignedInForApp().then((allowed) => {
+        if (allowed) maybeShowOnboardingTips();
+      });
     }
     return;
   }
@@ -1495,9 +1645,9 @@ function showIntroThenStart() {
     els.lineupIntro.classList.add("is-leaving");
     window.setTimeout(() => {
       finishIntro();
-      els.setlistStartDialog?.classList.add("from-intro");
-      openSetlistStartDialogWhenReady();
-      window.setTimeout(() => els.setlistStartDialog?.classList.remove("from-intro"), 700);
+      ensureSignedInForApp().then((allowed) => {
+        if (allowed) maybeShowOnboardingTips();
+      });
     }, 360);
   }, 680);
 }
@@ -2074,6 +2224,7 @@ function createNewShow() {
     date: new Date().toISOString().slice(0, 10),
     notes: "",
     team: "",
+    draft: true,
     lineup: [],
   };
   state.shows.unshift(show);
@@ -2084,7 +2235,7 @@ function createNewShow() {
   render();
   els.showName.focus();
   els.showName.select();
-  toast("New show created.");
+  toast("New setlist started. It will save after you change it.");
 }
 
 function duplicateCurrentShow() {
@@ -3451,6 +3602,9 @@ function bindEvents() {
   els.accountSignInModeButton?.addEventListener("click", () => setAccountMode("sign-in"));
   els.accountSignUpModeButton?.addEventListener("click", () => setAccountMode("sign-up"));
   els.accountUseCase?.addEventListener("change", updateAccountUseCaseFields);
+  els.accountProfileUseCase?.addEventListener("change", updateAccountProfileUseCaseFields);
+  els.accountRefreshProfileButton?.addEventListener("click", loadAccountProfileFromCloud);
+  els.accountSaveProfileButton?.addEventListener("click", saveAccountProfileToCloud);
   els.accountCreateButton?.addEventListener("click", createAccountFromDialog);
   els.accountRecoverButton?.addEventListener("click", recoverPasswordFromAccountDialog);
   els.accountGuestButton?.addEventListener("click", continueAsGuest);
@@ -3581,6 +3735,12 @@ function bindEvents() {
   els.showName.addEventListener("change", (event) => {
     state.show.name = event.target.value.trim() || defaultShowName;
     els.showName.value = state.show.name;
+    saveState();
+    renderSavedShows();
+  });
+
+  els.showName.addEventListener("input", (event) => {
+    state.show.name = event.target.value.trim() || defaultShowName;
     saveState();
     renderSavedShows();
   });

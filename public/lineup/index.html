@@ -15,7 +15,7 @@
         pointer-events: none;
       }
     </style>
-    <link rel="stylesheet" href="./styles.css?v=117" />
+    <link rel="stylesheet" href="./styles.css?v=118" />
   </head>
   <body class="intro-active">
     <div id="lineupIntro" class="lineup-intro" role="status" aria-live="polite">
@@ -500,6 +500,16 @@
                 <input id="accountCountry" type="text" autocomplete="country-name" />
               </label>
             </div>
+            <div class="form-grid">
+              <label>
+                <span>My instrument</span>
+                <input id="accountInstrument" type="text" placeholder="Guitar, piano..." />
+              </label>
+              <label>
+                <span>Community / institution</span>
+                <input id="accountCommunityInstitution" type="text" placeholder="Camp, temple, school..." />
+              </label>
+            </div>
             <label>
               <span>Main use case</span>
               <select id="accountUseCase">
@@ -542,6 +552,59 @@
           <div class="sync-status-card">
             <strong id="accountEmailLabel">Signed in</strong>
             <small>Your setlists, songs, and slides save to the cloud automatically.</small>
+          </div>
+          <div class="account-profile-card">
+            <div class="account-profile-title">
+              <strong>Personal information</strong>
+              <button class="link-button" type="button" id="accountRefreshProfileButton">Refresh</button>
+            </div>
+            <label>
+              <span>Full name</span>
+              <input id="accountProfileFullName" type="text" autocomplete="name" />
+            </label>
+            <div class="form-grid">
+              <label>
+                <span>Phone number</span>
+                <input id="accountProfilePhone" type="tel" autocomplete="tel" />
+              </label>
+              <label>
+                <span>Country</span>
+                <input id="accountProfileCountry" type="text" autocomplete="country-name" />
+              </label>
+            </div>
+            <div class="form-grid">
+              <label>
+                <span>My instrument</span>
+                <input id="accountProfileInstrument" type="text" placeholder="Guitar, piano..." />
+              </label>
+              <label>
+                <span>Community / institution</span>
+                <input id="accountProfileCommunityInstitution" type="text" placeholder="Camp, temple, school..." />
+              </label>
+            </div>
+            <label>
+              <span>Main use case</span>
+              <select id="accountProfileUseCase">
+                <option>Summer camp</option>
+                <option>Temple / synagogue</option>
+                <option>Community singalong</option>
+                <option>School / educational program</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label id="accountProfileCampField">
+              <span>Which camp?</span>
+              <input id="accountProfileCampName" type="text" />
+            </label>
+            <label id="accountProfileSynagogueField" hidden>
+              <span>Which temple / synagogue?</span>
+              <input id="accountProfileSynagogueName" type="text" />
+            </label>
+            <label id="accountProfileOtherUseCaseField" hidden>
+              <span>Tell us briefly</span>
+              <input id="accountProfileOtherUseCase" type="text" />
+            </label>
+            <button class="primary-button" type="button" id="accountSaveProfileButton">Save profile</button>
           </div>
           <button class="ghost-button" type="button" id="accountSignOutButton">Sign out</button>
         </div>
@@ -804,6 +867,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=117"></script>
+    <script src="./app.js?v=118"></script>
   </body>
 </html>

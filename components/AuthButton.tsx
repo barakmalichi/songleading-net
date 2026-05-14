@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useState } from "react";
 import { Check, Cloud, LogIn, LogOut, UserPlus, X } from "lucide-react";
 import {
+  fetchCloudProfile,
   getStoredSession,
   loadCloudWorkspaceOntoDevice,
+  normalizeCloudProfile,
   requestPasswordRecovery,
+  saveCloudProfile,
   saveCurrentDeviceToCloud,
   setStoredSession,
   signInToCloud,
@@ -15,7 +17,7 @@ import {
   type CloudSession
 } from "@/lib/cloudClient";
 
-type Mode = "closed" | "sign-in" | "sign-up" | "recover" | "signed-in";
+export type AuthMode = "closed" | "sign-in" | "sign-up" | "recover" | "signed-in";
 
 const useCases = [
   "Summer camp",
@@ -33,8 +35,12 @@ function hasCloudWorkspaceData(workspace: unknown) {
   return Boolean(data.lineupState || data.studioData);
 }
 
-export function AuthButton() {
-  const [mode, setMode] = useState<Mode>("closed");
+type AuthButtonProps = {
+  initialMode?: AuthMode;
+};
+
+export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [session, setSession] = useState<CloudSession | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,21 +51,73 @@ export function AuthButton() {
   const [campName, setCampName] = useState("");
   const [synagogueName, setSynagogueName] = useState("");
   const [otherUseCase, setOtherUseCase] = useState("");
+  const [instrument, setInstrument] = useState("");
+  const [communityInstitution, setCommunityInstitution] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [mounted, setMounted] = useState(false);
+
+  const openMode = useCallback((nextMode: Exclude<AuthMode, "closed">) => {
+    setMessage("");
+    setMode(nextMode);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("account", nextMode);
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
 
   useEffect(() => {
-    setMounted(true);
     const stored = getStoredSession();
     setSession(stored);
     if (stored?.user?.email) setEmail(stored.user.email);
+    hydrateProfile(stored);
   }, []);
+
+  useEffect(() => {
+    if (initialMode !== "closed") openMode(initialMode);
+  }, [initialMode, openMode]);
+
+  function hydrateProfile(source?: CloudSession | null) {
+    const profile = normalizeCloudProfile(source?.user?.user_metadata || null);
+    setFullName(profile.fullName);
+    setPhone(profile.phone);
+    setCountry(profile.country);
+    setUseCase(profile.useCase || "Summer camp");
+    setCampName(profile.campName || "");
+    setSynagogueName(profile.synagogueName || "");
+    setOtherUseCase(profile.otherUseCase || "");
+    setInstrument(profile.instrument || "");
+    setCommunityInstitution(profile.communityInstitution || "");
+  }
+
+  async function refreshProfile() {
+    if (!getStoredSession()) return;
+    try {
+      const data = await fetchCloudProfile();
+      const profile = normalizeCloudProfile(data.profile || data.user?.user_metadata || {});
+      setFullName(profile.fullName);
+      setPhone(profile.phone);
+      setCountry(profile.country);
+      setUseCase(profile.useCase || "Summer camp");
+      setCampName(profile.campName || "");
+      setSynagogueName(profile.synagogueName || "");
+      setOtherUseCase(profile.otherUseCase || "");
+      setInstrument(profile.instrument || "");
+      setCommunityInstitution(profile.communityInstitution || "");
+    } catch {
+      hydrateProfile(getStoredSession());
+    }
+  }
 
   const close = () => {
     setMode("closed");
     setPassword("");
     setMessage("");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("account");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
   };
 
   async function submit(action: "sign-in" | "sign-up") {
@@ -73,7 +131,9 @@ export function AuthButton() {
         useCase,
         campName: campName.trim(),
         synagogueName: synagogueName.trim(),
-        otherUseCase: otherUseCase.trim()
+        otherUseCase: otherUseCase.trim(),
+        instrument: instrument.trim(),
+        communityInstitution: communityInstitution.trim()
       };
       const nextSession = action === "sign-in"
         ? await signInToCloud(email.trim(), password)
@@ -94,6 +154,7 @@ export function AuthButton() {
         await saveCurrentDeviceToCloud();
       }
       setMode("signed-in");
+      hydrateProfile(nextSession);
       setPassword("");
       setMessage("Your cloud workspace is active. Changes save automatically.");
     } catch (error) {
@@ -122,27 +183,49 @@ export function AuthButton() {
     setMode("closed");
   }
 
+  async function saveProfile() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await saveCloudProfile({
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        country: country.trim(),
+        useCase,
+        campName: campName.trim(),
+        synagogueName: synagogueName.trim(),
+        otherUseCase: otherUseCase.trim(),
+        instrument: instrument.trim(),
+        communityInstitution: communityInstitution.trim()
+      });
+      setSession(getStoredSession());
+      setMessage("Profile saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save profile.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <span className="auth-actions inline-flex items-center gap-2">
         {!session ? (
-          <button
-            type="button"
-            onClick={() => setMode("sign-up")}
+          <a
+            href="/?account=sign-up"
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
           >
             <UserPlus size={16} />
             Sign Up
-          </button>
+          </a>
         ) : null}
-        <button
-          type="button"
-          onClick={() => setMode(session ? "signed-in" : "sign-in")}
+        <a
+          href={`/?account=${session ? "signed-in" : "sign-in"}`}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
         >
           {session ? <Cloud size={16} /> : <LogIn size={16} />}
           {session ? "Account" : "Sign in"}
-        </button>
+        </a>
         {session?.user?.email?.toLowerCase() === ADMIN_EMAIL ? (
           <a
             href="/admin"
@@ -153,7 +236,7 @@ export function AuthButton() {
         ) : null}
       </span>
 
-      {mounted && mode !== "closed" ? createPortal((
+      {mode !== "closed" ? (
         <div className="fixed inset-0 z-[9999] isolate grid place-items-center overflow-y-auto bg-slate-950/55 px-3 py-5 backdrop-blur-md sm:px-4 sm:py-6">
           <section className="relative z-[10000] max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl ring-1 ring-slate-950/10">
             <header className="flex items-start justify-between gap-3">
@@ -184,6 +267,16 @@ export function AuthButton() {
                       <label className="grid gap-1 text-sm font-bold text-slate-600">
                         Country
                         <input value={country} onChange={(event) => setCountry(event.target.value)} className="rounded-xl border border-slate-200 px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" autoComplete="country-name" />
+                      </label>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="grid gap-1 text-sm font-bold text-slate-600">
+                        My instrument
+                        <input value={instrument} onChange={(event) => setInstrument(event.target.value)} className="rounded-xl border border-slate-200 px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" placeholder="Guitar, piano..." />
+                      </label>
+                      <label className="grid gap-1 text-sm font-bold text-slate-600">
+                        Community / institution
+                        <input value={communityInstitution} onChange={(event) => setCommunityInstitution(event.target.value)} className="rounded-xl border border-slate-200 px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" placeholder="Camp, temple, school..." />
                       </label>
                     </div>
                     <label className="grid gap-1 text-sm font-bold text-slate-600">
@@ -280,9 +373,70 @@ export function AuthButton() {
                   <Check size={17} />
                   {session.user?.email || email || "Signed in"}
                 </div>
-                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold leading-6 text-slate-600">
-                  Your cloud workspace is active. Changes save automatically and will be available when you sign in from another device.
-                </p>
+                <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="text-sm">Personal information</strong>
+                    <button type="button" onClick={refreshProfile} className="text-xs font-black text-blue-700 hover:text-blue-900">
+                      Refresh
+                    </button>
+                  </div>
+                  <label className="grid gap-1 text-sm font-bold text-slate-600">
+                    Full name
+                    <input value={fullName} onChange={(event) => setFullName(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" autoComplete="name" />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Phone number
+                      <input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" autoComplete="tel" />
+                    </label>
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Country
+                      <input value={country} onChange={(event) => setCountry(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" autoComplete="country-name" />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      My instrument
+                      <input value={instrument} onChange={(event) => setInstrument(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" placeholder="Guitar, piano..." />
+                    </label>
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Community / institution
+                      <input value={communityInstitution} onChange={(event) => setCommunityInstitution(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" placeholder="Camp, temple, school..." />
+                    </label>
+                  </div>
+                  <label className="grid gap-1 text-sm font-bold text-slate-600">
+                    Main use case
+                    <select value={useCase} onChange={(event) => setUseCase(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400">
+                      {useCases.map((item) => <option key={item}>{item}</option>)}
+                    </select>
+                  </label>
+                  {useCase === "Summer camp" ? (
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Which camp?
+                      <input value={campName} onChange={(event) => setCampName(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" />
+                    </label>
+                  ) : null}
+                  {useCase === "Temple / synagogue" ? (
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Which temple / synagogue?
+                      <input value={synagogueName} onChange={(event) => setSynagogueName(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" />
+                    </label>
+                  ) : null}
+                  {useCase === "Other" ? (
+                    <label className="grid gap-1 text-sm font-bold text-slate-600">
+                      Tell us briefly
+                      <input value={otherUseCase} onChange={(event) => setOtherUseCase(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-base font-semibold text-slate-950 outline-none focus:border-blue-400" />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={saveProfile}
+                    disabled={busy}
+                    className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60"
+                  >
+                    Save profile
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={signOut}
@@ -297,7 +451,7 @@ export function AuthButton() {
             {message ? <p className="mt-4 text-sm font-bold leading-6 text-slate-500">{message}</p> : null}
           </section>
         </div>
-      ), document.body) : null}
+      ) : null}
     </>
   );
 }
