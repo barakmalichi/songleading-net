@@ -10,6 +10,7 @@ const keys = [...majorKeys, ...minorKeys];
 const capoOptions = ["", "Capo 1", "Capo 2", "Capo 3", "Capo 4", "Capo 5", "Capo 6", "Capo 7"];
 const storageKey = "show-lineup-builder-state";
 const cloudAuthStorageKey = "songleading-auth-session:v1";
+const guestSessionStorageKey = "songleading-guest-session:v1";
 const studioStorageKey = "lyric-slide-studio:v1";
 const themeStorageKey = "show-lineup-builder-theme";
 const skinStorageKey = "show-lineup-builder-skin";
@@ -163,6 +164,7 @@ const els = {
   accountCreateButton: document.querySelector("#accountCreateButton"),
   accountSubmitButton: document.querySelector("#accountSubmitButton"),
   accountRecoverButton: document.querySelector("#accountRecoverButton"),
+  accountGuestButton: document.querySelector("#accountGuestButton"),
   accountEmailLabel: document.querySelector("#accountEmailLabel"),
   accountSaveCloudButton: document.querySelector("#accountSaveCloudButton"),
   accountLoadCloudButton: document.querySelector("#accountLoadCloudButton"),
@@ -366,7 +368,26 @@ function setCloudSession(session) {
       cloudWorkspaceLoadedForSession = false;
       return;
     }
+    setGuestSession(false);
     localStorage.setItem(cloudAuthStorageKey, JSON.stringify(session));
+  } catch {}
+}
+
+function hasGuestSession() {
+  try {
+    return sessionStorage.getItem(guestSessionStorageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function setGuestSession(active) {
+  try {
+    if (active) {
+      sessionStorage.setItem(guestSessionStorageKey, "true");
+    } else {
+      sessionStorage.removeItem(guestSessionStorageKey);
+    }
   } catch {}
 }
 
@@ -444,6 +465,7 @@ function queueLineupCloudSave() {
 
 function updateAccountDialog(message = "") {
   const session = getCloudSession();
+  const guest = hasGuestSession();
   if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
   if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
   if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Sync" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
@@ -452,7 +474,7 @@ function updateAccountDialog(message = "") {
       ? "Your setlists, songs, and slides are connected to this account."
       : accountMode === "sign-up"
         ? "Create an account to use Lineup and keep your work saved across devices."
-        : "Sign in to use Lineup and open your saved setlists, songs, and slides.";
+        : "Sign in to sync across devices, or continue as guest for this browser only.";
   }
   if (els.accountSignupFields) els.accountSignupFields.hidden = accountMode !== "sign-up";
   if (els.accountSignInModeButton) els.accountSignInModeButton.classList.toggle("active", accountMode === "sign-in");
@@ -466,7 +488,7 @@ function updateAccountDialog(message = "") {
     els.accountEmailLabel.textContent = session?.user?.email || els.accountEmail?.value || "Signed in";
   }
   if (els.accountSyncMessage) {
-    els.accountSyncMessage.textContent = message || (authGateActive ? "Sign in or create an account to use Lineup." : "");
+    els.accountSyncMessage.textContent = message || (guest ? "Guest mode is active. Work stays only in this browser." : authGateActive ? "Sign in, create an account, or continue as guest to use Lineup." : "");
   }
 }
 
@@ -491,14 +513,14 @@ function openAccountDialog() {
   openDialog(els.accountDialog);
 }
 
-function openRequiredAccountDialog(message = "Sign in or create an account to use Lineup.") {
+function openRequiredAccountDialog(message = "Sign in to sync across devices, or continue as guest to save only in this browser.") {
   authGateActive = true;
   document.body.classList.add("auth-required");
   closeOnboardingTips(false);
   closeSetlistStartDialog();
   openAccountDialog();
   if (window.location.protocol === "file:") {
-    updateAccountDialog("Accounts work on the online app. Open https://www.songleading.net/lineup/index.html to use Lineup with sign-in.");
+    updateAccountDialog("Sign-in works on the online app. You can continue as guest here, but work stays only in this browser and can be lost if browser data is cleared.");
     return;
   }
   updateAccountDialog(message);
@@ -509,6 +531,20 @@ async function finishRequiredAccountFlow(message = "Signed in.") {
   document.body.classList.remove("auth-required");
   updateAccountDialog(message);
   closeDialog(els.accountDialog);
+  if (!importedSharedLineup) {
+    openSetlistStartDialog();
+  } else {
+    maybeShowOnboardingTips();
+  }
+}
+
+function continueAsGuest() {
+  setGuestSession(true);
+  authGateActive = false;
+  document.body.classList.remove("auth-required");
+  updateAccountDialog("Continuing as guest. Work is saved only in this browser on this device.");
+  closeDialog(els.accountDialog);
+  toast("Guest mode: saved only on this browser.");
   if (!importedSharedLineup) {
     openSetlistStartDialog();
   } else {
@@ -528,16 +564,15 @@ async function loadCloudOnceForSession() {
 
 async function ensureSignedInForApp() {
   if (!requireAccountForApp) return true;
-  if (window.location.protocol === "file:") {
-    openRequiredAccountDialog();
-    return false;
-  }
+  if (hasGuestSession()) return true;
   try {
-    const session = await getValidCloudSession();
-    if (session?.access_token) {
-      setCloudSession(session);
-      await loadCloudOnceForSession();
-      return true;
+    if (window.location.protocol !== "file:") {
+      const session = await getValidCloudSession();
+      if (session?.access_token) {
+        setCloudSession(session);
+        await loadCloudOnceForSession();
+        return true;
+      }
     }
   } catch (error) {
     console.warn("Account check failed.", error);
@@ -3338,6 +3373,7 @@ function bindEvents() {
   els.accountUseCase?.addEventListener("change", updateAccountUseCaseFields);
   els.accountCreateButton?.addEventListener("click", createAccountFromDialog);
   els.accountRecoverButton?.addEventListener("click", recoverPasswordFromAccountDialog);
+  els.accountGuestButton?.addEventListener("click", continueAsGuest);
   els.accountSaveCloudButton?.addEventListener("click", async () => {
     updateAccountDialog("Saving...");
     try {
@@ -3364,12 +3400,12 @@ function bindEvents() {
     }
   });
   els.accountDialog?.addEventListener("cancel", (event) => {
-    if (authGateActive && !getCloudSession()) {
+    if (authGateActive && !getCloudSession() && !hasGuestSession()) {
       event.preventDefault();
     }
   });
   els.accountDialog?.addEventListener("close", () => {
-    if (authGateActive && !getCloudSession()) {
+    if (authGateActive && !getCloudSession() && !hasGuestSession()) {
       window.setTimeout(() => openRequiredAccountDialog(), 0);
     }
   });

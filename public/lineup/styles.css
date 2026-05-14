@@ -2396,6 +2396,42 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   transform: scale(0.985);
 }
 
+.guest-mode-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 34%, var(--line));
+  border-radius: calc(var(--radius) + 2px);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--blue) 10%, transparent), transparent 64%),
+    var(--panel-soft);
+}
+
+.guest-mode-card strong,
+.guest-mode-card small {
+  display: block;
+}
+
+.guest-mode-card strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.guest-mode-card small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.guest-mode-button {
+  min-height: 40px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
 .account-signup-fields {
   display: grid;
   gap: 12px;
@@ -4010,6 +4046,14 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
   .account-dialog .account-mode-button {
     min-height: 44px;
+  }
+
+  .account-dialog .guest-mode-card {
+    grid-template-columns: 1fr;
+  }
+
+  .account-dialog .guest-mode-button {
+    width: 100%;
   }
 
   .account-dialog .dialog-actions.compact {
