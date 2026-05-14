@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Cloud, LogIn, LogOut, RefreshCcw, UploadCloud, UserPlus, X } from "lucide-react";
 import {
   getStoredSession,
@@ -40,8 +41,10 @@ export function AuthButton() {
   const [otherUseCase, setOtherUseCase] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const stored = getStoredSession();
     setSession(stored);
     if (stored?.user?.email) setEmail(stored.user.email);
@@ -164,9 +167,9 @@ export function AuthButton() {
         ) : null}
       </span>
 
-      {mode !== "closed" ? (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-          <section className="max-h-[calc(100vh-3rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl">
+      {mounted && mode !== "closed" ? createPortal((
+        <div className="fixed inset-0 z-[9999] isolate grid place-items-center overflow-y-auto bg-slate-950/55 px-3 py-5 backdrop-blur-md sm:px-4 sm:py-6">
+          <section className="relative z-[10000] max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl ring-1 ring-slate-950/10">
             <header className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Account</p>
@@ -323,7 +326,7 @@ export function AuthButton() {
             {message ? <p className="mt-4 text-sm font-bold leading-6 text-slate-500">{message}</p> : null}
           </section>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }
