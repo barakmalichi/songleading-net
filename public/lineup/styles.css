@@ -903,6 +903,12 @@ h2 {
   font-weight: 760;
 }
 
+.mobile-show-symbol,
+.mobile-show-picker-button,
+.mobile-menu-action {
+  display: none;
+}
+
 .primary-button,
 .ghost-button,
 .outline-button,
@@ -3742,6 +3748,39 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     overflow: hidden;
   }
 
+  body {
+    padding: 0;
+  }
+
+  body.intro-active {
+    overflow: hidden;
+  }
+
+  body.intro-active .app-shell {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .lineup-intro {
+    display: none;
+    pointer-events: none;
+  }
+
+  .coach-overlay {
+    pointer-events: none;
+  }
+
+  .coach-overlay .coach-tip {
+    pointer-events: auto;
+  }
+
+  button,
+  summary,
+  a {
+    touch-action: manipulation;
+  }
+
   .app-shell {
     position: relative;
     grid-template-columns: 1fr;
@@ -3796,7 +3835,7 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     grid-row: 2;
     height: 100dvh;
     overflow: hidden;
-    padding-bottom: calc(44dvh + 28px + env(safe-area-inset-bottom, 0px));
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(44dvh + 28px + env(safe-area-inset-bottom, 0px));
   }
 
   .slide-preview-panel {
@@ -3809,7 +3848,7 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .app-shell.bank-collapsed .show-panel {
-    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   }
 
   .bank-panel {
@@ -3819,7 +3858,7 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     left: 0;
     z-index: 20;
     display: flex;
-    height: min(44dvh, 430px);
+    height: var(--mobile-library-height, min(44dvh, 430px));
     min-height: 265px;
     padding: 18px 14px calc(14px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--line-strong);
@@ -3827,13 +3866,14 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     box-shadow: 0 -22px 70px rgba(0, 0, 0, 0.42);
     transform: translateY(0);
     transition: height 240ms ease, min-height 240ms ease, transform 240ms ease;
-    touch-action: pan-y;
+    touch-action: none;
+    overscroll-behavior: contain;
     will-change: height, transform;
   }
 
   .bank-panel.mobile-expanded {
-    height: calc(100dvh - 12px);
-    min-height: calc(100dvh - 12px);
+    height: var(--mobile-library-height, calc(100dvh - 12px));
+    min-height: var(--mobile-library-height, calc(100dvh - 12px));
   }
 
   .bank-panel.is-dragging {
@@ -3865,10 +3905,10 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
   .app-shell.bank-collapsed .bank-panel {
     display: flex;
-    height: calc(72px + env(safe-area-inset-bottom, 0px));
+    height: var(--mobile-library-height, calc(44px + env(safe-area-inset-bottom, 0px)));
     min-height: 0;
     overflow: hidden;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 14px 14px calc(6px + env(safe-area-inset-bottom, 0px));
   }
 
   .app-shell.bank-collapsed .bank-panel .side-panel-view {
@@ -3890,23 +3930,58 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
   .show-header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-    margin-bottom: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
   }
 
-  .show-title-row,
+  .show-title-block,
   .show-title-input {
     width: 100%;
   }
 
   .show-title-row {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 32px auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
   }
 
   .show-title-input {
     min-width: 0;
-    font-size: 1.28rem;
+    height: 38px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-size: 1.08rem;
+    box-shadow: none;
+  }
+
+  .mobile-show-symbol {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+  }
+
+  .mobile-show-picker-button {
+    display: inline-grid;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border-color: color-mix(in srgb, var(--line) 70%, transparent);
+    border-radius: 10px;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+  }
+
+  .mobile-show-picker-button svg {
+    width: 17px;
+    height: 17px;
   }
 
   .bank-header {
@@ -3917,52 +3992,134 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .bank-heading {
-    flex: 1 1 auto;
-    min-width: 0;
+    display: none;
   }
 
-  .bank-logo {
-    display: none;
+  .bank-header::after {
+    content: "Library";
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--green);
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .bank-title-actions {
+    position: fixed;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    display: flex;
     flex: 0 0 auto;
-    gap: 6px;
+    gap: 8px;
   }
 
   .bank-title-actions .icon-button {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
+    border-color: color-mix(in srgb, var(--green) 34%, var(--line));
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.32);
   }
 
   #closeBankButton {
-    display: inline-grid;
+    display: none;
   }
 
   .show-date-inline {
-    width: min(180px, 100%);
+    width: 104px;
+    height: 36px;
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 0.78rem;
   }
 
   .show-tools {
-    align-items: flex-start;
-    width: 100%;
+    align-items: center;
+    width: auto;
   }
 
   .header-actions {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    width: 100%;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
+    overflow: visible;
+    width: auto;
+    padding-bottom: 0;
   }
 
-  .header-actions::-webkit-scrollbar {
+  .header-actions > button {
     display: none;
+  }
+
+  .header-menu,
+  .header-menu summary {
+    display: inline-grid;
+  }
+
+  .header-menu summary {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .header-menu-popover {
+    top: calc(100% + 8px);
+    right: 0;
+    left: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    z-index: 70;
+    min-width: 176px;
+    width: max-content;
+    padding: 7px;
+  }
+
+  .header-menu-popover .top-icon-button,
+  .mobile-menu-action {
+    display: flex;
+    justify-content: flex-start;
+    width: 100%;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 10px;
+  }
+
+  .header-menu-popover .top-icon-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .header-menu-popover .top-icon-button span {
+    display: inline;
   }
 
   .top-icon-button {
     flex: 0 0 auto;
+  }
+
+  .side-panel-heading {
+    display: none;
+  }
+
+  .home-link-bottom {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 12px;
+  }
+
+  .home-link-bottom span {
+    display: none;
+  }
+
+  .home-link-bottom svg {
+    width: 19px;
+    height: 19px;
   }
 
   .rail .saved-shows-popover {
@@ -4090,6 +4247,7 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: none;
   }
 
   .bank-song {

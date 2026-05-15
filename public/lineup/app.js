@@ -40,6 +40,7 @@ let coachStepIndex = 0;
 let authGateActive = false;
 let cloudWorkspaceLoadedForSession = false;
 let mobileLibraryExpanded = false;
+let mobileLibraryState = "middle";
 
 const els = {
   lineupIntro: document.querySelector("#lineupIntro"),
@@ -662,6 +663,13 @@ async function loadCloudOnceForSession() {
 async function ensureSignedInForApp() {
   if (!requireAccountForApp) return true;
   if (hasGuestSession()) return true;
+  if (isMobileLayout()) {
+    setGuestSession(true);
+    authGateActive = false;
+    document.body.classList.remove("auth-required");
+    closeDialog(els.accountDialog);
+    return true;
+  }
   try {
     if (window.location.protocol !== "file:") {
       const session = await getValidCloudSession();
@@ -1532,6 +1540,7 @@ function renderCoachStep() {
 
 function maybeShowOnboardingTips() {
   if (!els.coachOverlay) return;
+  if (isMobileLayout()) return;
   if (authGateActive || !getCloudSession()) return;
   if (localStorage.getItem(onboardingHiddenStorageKey) === "true") return;
   if (els.setlistStartDialog?.open) return;
@@ -1630,6 +1639,11 @@ function finishIntro() {
 }
 
 function showIntroThenStart() {
+  if (isMobileLayout()) {
+    finishIntro();
+    ensureSignedInForApp();
+    return;
+  }
   if (!els.lineupIntro || importedSharedLineup) {
     finishIntro();
     if (importedSharedLineup) {
@@ -1660,16 +1674,39 @@ function isMobileLayout() {
 
 function setMobileLibraryExpanded(expanded) {
   mobileLibraryExpanded = Boolean(expanded) && isMobileLayout();
+  els.bankPanel?.style.removeProperty("--mobile-library-height");
   els.bankPanel?.classList.toggle("mobile-expanded", mobileLibraryExpanded);
+}
+
+function setMobileLibraryState(stateName) {
+  if (!isMobileLayout()) return;
+  const nextState = ["minimized", "middle", "full"].includes(stateName) ? stateName : "middle";
+  mobileLibraryState = nextState;
+  mobileLibraryExpanded = nextState === "full";
+  els.bankPanel?.style.removeProperty("--mobile-library-height");
+  els.appShell?.classList.toggle("bank-collapsed", nextState === "minimized");
+  els.bankPanel?.classList.toggle("mobile-expanded", nextState === "full");
+  els.bankPanel?.classList.remove("shows-mode");
+  sidePanelMode = "library";
+  if (els.sidePanelTitle) els.sidePanelTitle.textContent = "Library";
+  if (els.libraryView) els.libraryView.hidden = false;
+  if (els.showsView) els.showsView.hidden = true;
+  if (els.newSongButton) els.newSongButton.hidden = false;
+  if (els.quickAddButton) els.quickAddButton.hidden = false;
+  els.showsTabButton?.classList.remove("active");
 }
 
 function openMobileLibraryDrawer(expand = false) {
   if (!isMobileLayout()) return;
   setSidePanelMode("library");
-  setMobileLibraryExpanded(expand);
+  setMobileLibraryState(expand ? "full" : "middle");
 }
 
 function closeMobileLibraryDrawer() {
+  if (isMobileLayout()) {
+    setMobileLibraryState("minimized");
+    return;
+  }
   setMobileLibraryExpanded(false);
   els.appShell.classList.add("bank-collapsed");
   sidePanelMode = "library";
@@ -1680,6 +1717,44 @@ function closeMobileLibraryDrawer() {
   if (els.newSongButton) els.newSongButton.hidden = false;
   if (els.quickAddButton) els.quickAddButton.hidden = false;
   els.showsTabButton?.classList.remove("active");
+}
+
+function handleMobileMenuCommand(command) {
+  if (command === "shows") {
+    setSidePanelMode("shows");
+    return;
+  }
+  if (command === "save") {
+    commitShowMetaFromFields();
+    saveState();
+    toast("Lineup saved on this device.");
+    return;
+  }
+  if (command === "export") {
+    commitShowMetaFromFields();
+    openExportPreview();
+    return;
+  }
+  if (command === "slides") {
+    setSlidePreviewOpen(!slidePreviewOpen);
+  }
+}
+
+function handleMobileControl(control, event) {
+  if (!isMobileLayout() || !control) return false;
+  const command = control.dataset?.mobileCommand;
+  if (command) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.stopImmediatePropagation?.();
+    if (els.headerMenu) els.headerMenu.open = false;
+    handleMobileMenuCommand(command);
+    return true;
+  }
+  if (control.id === "homeButton") {
+    return false;
+  }
+  return false;
 }
 
 function applyTheme(theme) {
@@ -3993,6 +4068,7 @@ function bindPointerDragFallback() {
   };
 
   document.addEventListener("pointerdown", (event) => {
+    if (isMobileLayout()) return;
     if (event.button !== 0) return;
     const blockedControl = event.target.closest?.("input, select, textarea, [data-close-dialog], dialog");
     if (blockedControl) return;
@@ -4078,30 +4154,58 @@ function bindMobileLibraryDrawerDrag() {
   if (!els.bankPanel || document.body.dataset.mobileLibraryDragBound) return;
   document.body.dataset.mobileLibraryDragBound = "true";
   let drag = null;
+  let suppressPanelClick = false;
+
+  const mobileLibraryHeight = () => {
+    if (els.appShell.classList.contains("bank-collapsed")) {
+      return 44;
+    }
+    return mobileLibraryExpanded ? Math.max(0, window.innerHeight - 12) : Math.min(window.innerHeight * 0.44, 430);
+  };
+
+  const setDragHeight = (height) => {
+    const minHeight = 44;
+    const maxHeight = Math.max(minHeight, window.innerHeight - 12);
+    const nextHeight = clampNumber(Math.round(height), minHeight, maxHeight);
+    els.bankPanel.style.setProperty("--mobile-library-height", `${nextHeight}px`);
+  };
 
   const finishDrag = (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     const deltaY = event.clientY - drag.startY;
+    const finalHeight = drag.startHeight - deltaY;
+    const expandedCutoff = window.innerHeight * 0.68;
+    const minimizedCutoff = window.innerHeight * 0.22;
     els.bankPanel.classList.remove("is-dragging");
-    if (deltaY < -42) {
-      openMobileLibraryDrawer(true);
-    } else if (deltaY > 42) {
-      if (mobileLibraryExpanded) {
-        setMobileLibraryExpanded(false);
-      } else {
-        closeMobileLibraryDrawer();
-      }
+    els.bankPanel.style.removeProperty("--mobile-library-height");
+    suppressPanelClick = Boolean(drag.active);
+    if (!drag.active && drag.fromHeader) {
+      setMobileLibraryState(mobileLibraryState === "minimized" ? "middle" : "minimized");
+    } else if (finalHeight >= expandedCutoff) {
+      setMobileLibraryState("full");
+    } else if (finalHeight <= minimizedCutoff) {
+      setMobileLibraryState("minimized");
+    } else {
+      setMobileLibraryState("middle");
     }
     drag = null;
+    window.setTimeout(() => {
+      suppressPanelClick = false;
+    }, 180);
   };
 
   els.bankPanel.addEventListener("pointerdown", (event) => {
     if (!isMobileLayout()) return;
     if (sidePanelMode !== "library") return;
-    if (event.target.closest("button, input, select, textarea, a, summary, .song-bank-list, .category-filters")) return;
+    if (event.target.closest("button, input, select, textarea, a, summary")) return;
+    const fromHeader = Boolean(event.target.closest(".bank-header") || event.target === els.bankPanel);
+    if (!fromHeader && !event.target.closest(".side-panel-view, .song-bank-list, .category-filters, .search-row")) return;
     drag = {
       startY: event.clientY,
+      startHeight: mobileLibraryHeight(),
       pointerId: event.pointerId,
+      fromHeader,
+      active: false,
     };
     els.bankPanel.classList.add("is-dragging");
     els.bankPanel.setPointerCapture?.(event.pointerId);
@@ -4110,7 +4214,9 @@ function bindMobileLibraryDrawerDrag() {
   els.bankPanel.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     if (Math.abs(event.clientY - drag.startY) < 6) return;
+    drag.active = true;
     event.preventDefault();
+    setDragHeight(drag.startHeight - (event.clientY - drag.startY));
   }, { passive: false });
 
   els.bankPanel.addEventListener("pointerup", finishDrag);
@@ -4120,9 +4226,55 @@ function bindMobileLibraryDrawerDrag() {
     drag = null;
   });
 
+  els.bankPanel.addEventListener("click", (event) => {
+    if (!suppressPanelClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    suppressPanelClick = false;
+  }, true);
+
   window.addEventListener("resize", () => {
     if (!isMobileLayout()) setMobileLibraryExpanded(false);
   });
+}
+
+function bindMobileTapBridge() {
+  if (document.body.dataset.mobileTapBridgeBound) return;
+  document.body.dataset.mobileTapBridgeBound = "true";
+  let tap = null;
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!isMobileLayout() || event.pointerType === "mouse") return;
+    const control = event.target.closest?.("button, a, summary, [data-show-id]");
+    if (!control) return;
+    tap = {
+      control,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }, true);
+
+  document.addEventListener("pointerup", (event) => {
+    if (!tap || tap.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY);
+    const control = tap.control;
+    tap = null;
+    if (distance > 10) return;
+    if (!control.isConnected || control.disabled || control.getAttribute("aria-disabled") === "true") return;
+    if (control.closest("dialog:not([open])")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    window.setTimeout(() => {
+      if (control.isConnected) control.click();
+    }, 0);
+  }, true);
+
+  document.addEventListener("pointercancel", () => {
+    tap = null;
+  }, true);
 }
 
 function bindEmergencyButtonDelegates() {
@@ -4145,6 +4297,8 @@ function bindEmergencyButtonDelegates() {
         "button, a, [data-show-id]"
       );
       if (!control) return;
+
+      if (handleMobileControl(control, event)) return;
 
       const handled = () => {
         event.preventDefault();
@@ -4174,6 +4328,43 @@ function bindEmergencyButtonDelegates() {
       if (control.id === "mobileAddFirstSongButton") {
         handled();
         openMobileLibraryDrawer(false);
+        return;
+      }
+
+      if (control.id === "accountGuestButton") {
+        handled();
+        continueAsGuest();
+        return;
+      }
+
+      if (control.id === "accountSignInModeButton") {
+        handled();
+        setAccountMode("sign-in");
+        return;
+      }
+
+      if (control.id === "accountSignUpModeButton") {
+        handled();
+        setAccountMode("sign-up");
+        return;
+      }
+
+      if (control.id === "accountRecoverButton") {
+        handled();
+        recoverPasswordFromAccountDialog();
+        return;
+      }
+
+      if (control.id === "accountSubmitButton") {
+        handled();
+        signInFromAccountDialog(event);
+        return;
+      }
+
+      if (control.matches("[data-mobile-command]")) {
+        handled();
+        els.headerMenu.open = false;
+        handleMobileMenuCommand(control.dataset.mobileCommand);
         return;
       }
 
@@ -4521,9 +4712,17 @@ window.saveSongFromDialog = saveSongFromDialog;
 window.closeDialog = closeDialog;
 
 function startApp() {
+  if (isMobileLayout()) {
+    finishIntro();
+    closeOnboardingTips(true);
+    authGateActive = false;
+    document.body.classList.remove("auth-required", "coach-active");
+    closeDialog(els.accountDialog);
+  }
   bindEmergencyButtonDelegates();
   bindCoreFallbackEvents();
   bindOnboardingControlEvents();
+  bindMobileTapBridge();
   bindPointerDragFallback();
   bindMobileLibraryDrawerDrag();
 
@@ -4544,7 +4743,7 @@ function startApp() {
     if (importedSharedLineup) {
       toast("Shared lineup opened and saved here.");
       history.replaceState(null, "", window.location.href.split("#")[0]);
-      maybeShowOnboardingTips();
+      if (!isMobileLayout()) maybeShowOnboardingTips();
     } else {
       showIntroThenStart();
     }
