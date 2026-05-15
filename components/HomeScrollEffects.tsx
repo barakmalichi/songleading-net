@@ -35,6 +35,7 @@ export function HomeScrollEffects() {
     mutationObserver.observe(document.body, { childList: true, subtree: true });
 
     const getSnapSections = () => Array.from(document.querySelectorAll<HTMLElement>(".modern-home > section"));
+    const usesSectionSnap = () => window.matchMedia("(max-width: 760px)").matches;
     let snapping = false;
     let snapTimer: number | undefined;
     let touchStartY = 0;
@@ -104,6 +105,7 @@ export function HomeScrollEffects() {
     }
 
     function handleWheel(event: WheelEvent) {
+      if (!usesSectionSnap()) return;
       if (snapping || Math.abs(event.deltaY) < 18 || event.ctrlKey || event.metaKey) return;
 
       event.preventDefault();
@@ -115,7 +117,7 @@ export function HomeScrollEffects() {
     }
 
     function handleTouchStart(event: TouchEvent) {
-      if (window.innerWidth > 760 || snapping || event.touches.length !== 1 || isInteractiveTarget(event.target)) {
+      if (!usesSectionSnap() || snapping || event.touches.length !== 1 || isInteractiveTarget(event.target)) {
         touchActive = false;
         return;
       }

@@ -389,6 +389,11 @@ body.resizing-panels {
   overflow: hidden;
 }
 
+.lineup-intro[hidden] {
+  display: none !important;
+  pointer-events: none;
+}
+
 body.intro-active {
   overflow: hidden;
 }
@@ -4133,6 +4138,47 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   .quick-add-head,
   .quick-add-row {
     grid-template-columns: 1fr;
+  }
+
+  .song-dialog:not(.export-dialog) {
+    width: calc(100vw - 16px);
+    max-width: none;
+    max-height: calc(100dvh - 16px);
+    overflow: hidden;
+    border-radius: 18px;
+  }
+
+  .song-dialog:not(.export-dialog) form {
+    gap: 12px;
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .song-dialog .dialog-header {
+    gap: 10px;
+  }
+
+  .song-dialog .dialog-header h2 {
+    font-size: clamp(1.55rem, 8vw, 2.15rem);
+    line-height: 1;
+  }
+
+  .song-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .song-small-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hebrew-toggle {
+    align-content: stretch;
+  }
+
+  .hebrew-toggle span {
+    width: 100%;
   }
 
   .quick-add-head {

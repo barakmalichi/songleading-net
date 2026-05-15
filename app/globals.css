@@ -14,8 +14,8 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 0;
-  scroll-snap-type: y mandatory;
-  overscroll-behavior-y: none;
+  scroll-snap-type: none;
+  overscroll-behavior-y: auto;
 }
 
 body {
@@ -23,8 +23,8 @@ body {
   margin: 0;
   color: var(--foreground);
   background: var(--background);
-  scroll-snap-type: y mandatory;
-  overscroll-behavior-y: none;
+  scroll-snap-type: none;
+  overscroll-behavior-y: auto;
 }
 
 html[data-site-theme="dark"] {
@@ -104,8 +104,8 @@ select:focus-visible {
 .final-cta,
 .about-section {
   min-height: 100svh;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  scroll-snap-align: none;
+  scroll-snap-stop: normal;
 }
 
 .focus-resources-section,
@@ -1610,6 +1610,17 @@ html[data-site-theme="dark"] .hero-section::before,
     scroll-snap-type: y mandatory;
   }
 
+  .hero-section,
+  .focus-resources-section,
+  .story-section,
+  .tools-section,
+  .community-section,
+  .final-cta,
+  .about-section {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
   .auth-actions {
     flex-direction: row;
     align-items: center;
@@ -1697,9 +1708,17 @@ html[data-site-theme="dark"] .hero-section::before,
   }
 
   .hero-heading {
-    font-size: clamp(3.25rem, 16vw, 5.75rem);
-    line-height: 0.9;
+    font-size: clamp(2.65rem, 13vw, 5rem);
+    line-height: 0.92;
     overflow-wrap: balance;
+  }
+
+  .hero-heading .songleading-shine {
+    display: block;
+    max-width: 100%;
+    white-space: normal;
+    font-size: clamp(2.05rem, 10.8vw, 4.2rem);
+    line-height: 0.95;
   }
 
   .hero-copy-modern p {
