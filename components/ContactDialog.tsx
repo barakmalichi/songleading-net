@@ -55,7 +55,7 @@ export function ContactDialog() {
         <Mail size={18} />
       </button>
       {open ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 px-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[9999] grid place-items-center bg-slate-950/45 px-4 backdrop-blur-sm">
           <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl">
             <header className="flex items-start justify-between gap-4">
               <div>

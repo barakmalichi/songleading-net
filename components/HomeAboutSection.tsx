@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarDays } from "lucide-react";
 import { useEffect, useState } from "react";
+import { BookBarakDialog } from "@/components/BookBarakDialog";
 import { ContactDialog } from "@/components/ContactDialog";
 import {
   defaultHomepageAboutContent,
@@ -58,13 +58,7 @@ export function HomeAboutSection() {
           </div>
           <div className="mt-8 flex flex-wrap gap-3">
             <ContactDialog />
-            <a
-              href="mailto:barakmalichi@gmail.com?subject=Booking%20Barak%20Malichi"
-              className="book-barak-action inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-blue-700"
-            >
-              Book Barak
-              <CalendarDays size={18} />
-            </a>
+            <BookBarakDialog />
           </div>
         </div>
       </div>

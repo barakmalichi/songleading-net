@@ -15,6 +15,7 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 0;
   scroll-snap-type: y mandatory;
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -22,6 +23,8 @@ body {
   margin: 0;
   color: var(--foreground);
   background: var(--background);
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: none;
 }
 
 html[data-site-theme="dark"] {
@@ -126,6 +129,10 @@ select:focus-visible {
   padding-bottom: clamp(2rem, 5vh, 4rem);
 }
 
+.community-section {
+  overflow: hidden;
+}
+
 .focus-resources-section {
   display: grid;
   align-content: center;
@@ -206,6 +213,21 @@ select:focus-visible {
 .final-cta-panel {
   position: relative;
   min-height: calc(100svh - 11rem);
+}
+
+.final-cta-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(circle at 78% 22%, rgba(59, 130, 246, 0.35), transparent 34%),
+    linear-gradient(122deg, rgba(15, 23, 42, 0.9), rgba(30, 64, 175, 0.78) 48%, rgba(8, 145, 178, 0.62));
+  content: "";
+}
+
+.final-cta-panel > div:last-child {
+  position: relative;
+  z-index: 2;
 }
 
 .final-lineup-card {
@@ -613,6 +635,7 @@ html[data-site-theme="dark"] .hero-section::before,
   position: fixed;
   top: 12px;
   left: 50%;
+  z-index: 80;
   width: min(calc(100% - 20px), 80rem);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
@@ -621,6 +644,35 @@ html[data-site-theme="dark"] .hero-section::before,
   animation: header-drop 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both 120ms;
   backdrop-filter: blur(18px);
   transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.top-nav-link {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0 0.85rem;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.top-nav-link:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
 }
 
 .top-symbol-button {
@@ -632,6 +684,8 @@ html[data-site-theme="dark"] .hero-section::before,
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
+  text-decoration: none;
+  pointer-events: auto;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
     transform 160ms ease,
@@ -1549,6 +1603,11 @@ html[data-site-theme="dark"] .hero-section::before,
     max-width: 100%;
     overflow-x: hidden;
     scroll-snap-type: y mandatory;
+    overscroll-behavior-y: none;
+  }
+
+  .modern-home {
+    scroll-snap-type: y mandatory;
   }
 
   .auth-actions {
@@ -1608,6 +1667,7 @@ html[data-site-theme="dark"] .hero-section::before,
   }
 
   .modern-home > section {
+    min-height: 100svh;
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
@@ -1615,6 +1675,7 @@ html[data-site-theme="dark"] .hero-section::before,
   .hero-section {
     min-height: 100vh;
     min-height: 100svh;
+    overflow: hidden;
   }
 
   .hero-art {
@@ -1647,6 +1708,49 @@ html[data-site-theme="dark"] .hero-section::before,
 
   .focus-resources-section {
     perspective: 900px;
+  }
+
+  .focus-resources-section,
+  .story-section,
+  .tools-section,
+  .community-section,
+  .final-cta,
+  .about-section {
+    padding-top: 5.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .community-section {
+    align-content: center;
+  }
+
+  .community-section img {
+    min-height: 260px !important;
+    object-position: center;
+  }
+
+  .final-cta-panel {
+    min-height: calc(100svh - 6.5rem);
+    color: #ffffff;
+    background: #0f172a !important;
+  }
+
+  .final-cta-panel > img {
+    opacity: 0.22 !important;
+  }
+
+  .final-cta-panel > div:last-child {
+    min-height: calc(100svh - 6.5rem);
+    padding: 1.25rem !important;
+    align-content: center;
+  }
+
+  .final-cta-panel h2 {
+    font-size: clamp(2.35rem, 10vw, 3.8rem);
+  }
+
+  .final-lineup-card {
+    display: none;
   }
 
   .focus-card {

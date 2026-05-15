@@ -84,17 +84,21 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             </span>
           </a>
           <nav className="site-icon-nav hidden items-center gap-1.5 md:flex" aria-label="Homepage sections">
-            <a className="top-symbol-button" href="#resources" aria-label="Resources" title="Resources">
-              <BookOpenText size={18} />
+            <a className="top-nav-link" href="#resources" aria-label="Resources" title="Resources">
+              <BookOpenText size={17} />
+              <span>Resources</span>
             </a>
-            <a className="top-symbol-button" href="#training" aria-label="Training" title="Training">
-              <GraduationCap size={18} />
+            <a className="top-nav-link" href="#training" aria-label="Training" title="Training">
+              <GraduationCap size={17} />
+              <span>Training</span>
             </a>
-            <a className="top-symbol-button" href="#tools" aria-label="Tools" title="Tools">
-              <Wrench size={18} />
+            <a className="top-nav-link" href="#tools" aria-label="Tools" title="Tools">
+              <Wrench size={17} />
+              <span>Tools</span>
             </a>
-            <a className="top-symbol-button" href="#community" aria-label="Community" title="Community">
-              <Users size={18} />
+            <a className="top-nav-link" href="#community" aria-label="Community" title="Community">
+              <Users size={17} />
+              <span>Community</span>
             </a>
           </nav>
           <div className="site-actions flex shrink-0 items-center gap-1.5">
@@ -161,7 +165,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">Ready moments</p>
               <h2 className="mt-2 max-w-sm text-4xl font-black leading-tight tracking-tight">A resource desk before you lead.</h2>
               <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-black">
-                {["Opening", "Build", "Sing"].map((item) => (
+                {["Plan", "Build", "Sing"].map((item) => (
                   <span key={item} className="rounded-full border border-white/18 bg-white/12 px-3 py-2 backdrop-blur">
                     {item}
                   </span>
@@ -280,8 +284,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-100/80">Hashkiveinu</p>
                       <p className="mt-2 text-2xl font-black leading-tight text-white md:text-3xl">
-                        Shelter us beneath
-                        <span className="block text-blue-100">wings of peace</span>
+                        Shelter us
+                        <span className="block text-blue-100">beneath thy wings</span>
                       </p>
                     </div>
                     <div className="grid grid-cols-[1fr_44px] gap-3">
