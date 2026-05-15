@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Cloud, LogIn, LogOut, UserPlus, X } from "lucide-react";
+import { Check, Cloud, LogIn, LogOut, ShieldCheck, X } from "lucide-react";
 import {
   fetchCloudProfile,
   getStoredSession,
@@ -210,28 +210,22 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
   return (
     <>
       <span className="auth-actions inline-flex items-center gap-2">
-        {!session ? (
-          <a
-            href="/?account=sign-up"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <UserPlus size={16} />
-            Sign Up
-          </a>
-        ) : null}
         <a
           href={`/?account=${session ? "signed-in" : "sign-in"}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
+          className="top-symbol-button"
+          aria-label={session ? "Open account" : "Sign in"}
+          title={session ? "Account" : "Sign in"}
         >
           {session ? <Cloud size={16} /> : <LogIn size={16} />}
-          {session ? "Account" : "Sign in"}
         </a>
         {session?.user?.email?.toLowerCase() === ADMIN_EMAIL ? (
           <a
             href="/admin"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-300 hover:text-blue-700"
+            className="top-symbol-button"
+            aria-label="Admin"
+            title="Admin"
           >
-            Admin
+            <ShieldCheck size={16} />
           </a>
         ) : null}
       </span>
@@ -243,7 +237,7 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Account</p>
                 <h2 className="mt-1 text-2xl font-black">
-                  {session ? "Sync" : mode === "sign-up" ? "Sign Up" : mode === "recover" ? "Recover password" : "Sign in"}
+                  {session ? "Sync" : mode === "sign-up" ? "Create account" : mode === "recover" ? "Recover password" : "Sign in"}
                 </h2>
               </div>
               <button type="button" onClick={close} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close">
@@ -342,23 +336,24 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
                     Send recovery email
                   </button>
                 ) : (
-                <div className="grid gap-2 pt-2 sm:grid-cols-2">
+                <div className="grid gap-2 pt-2">
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => submit("sign-in")}
-                    className={`rounded-xl px-4 py-3 text-sm font-black disabled:opacity-60 ${mode === "sign-up" ? "border border-slate-200 text-slate-900" : "bg-blue-600 text-white"}`}
+                    onClick={() => submit(mode === "sign-up" ? "sign-up" : "sign-in")}
+                    className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60"
                   >
-                    Sign in
+                    {mode === "sign-up" ? "Create account" : "Sign in"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => submit("sign-up")}
-                    className={`rounded-xl px-4 py-3 text-sm font-black disabled:opacity-60 ${mode === "sign-up" ? "bg-blue-600 text-white" : "border border-slate-200 text-slate-900"}`}
-                  >
-                    Sign Up
-                  </button>
+                  {mode === "sign-in" ? (
+                    <button
+                      type="button"
+                      onClick={() => setMode("sign-up")}
+                      className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-300 hover:text-blue-700"
+                    >
+                      Create account
+                    </button>
+                  ) : null}
                 </div>
                 )}
                 {mode !== "sign-in" ? (

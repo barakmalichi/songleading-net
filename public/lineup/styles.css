@@ -1804,6 +1804,10 @@ body.is-pointer-dragging * {
   margin-top: 10px;
 }
 
+.mobile-first-song-button {
+  display: none;
+}
+
 .lineup-theme-toggle {
   width: 46px;
   height: 46px;
@@ -3821,6 +3825,24 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     border-top: 1px solid var(--line-strong);
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -22px 70px rgba(0, 0, 0, 0.42);
+    transform: translateY(0);
+    transition: height 240ms ease, min-height 240ms ease, transform 240ms ease;
+    touch-action: pan-y;
+    will-change: height, transform;
+  }
+
+  .bank-panel.mobile-expanded {
+    height: calc(100dvh - 12px);
+    min-height: calc(100dvh - 12px);
+  }
+
+  .bank-panel.is-dragging {
+    transition: none;
+  }
+
+  .bank-header {
+    cursor: ns-resize;
+    touch-action: none;
   }
 
   .side-panel-view,
@@ -4077,13 +4099,34 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .lineup-add-actions {
-    display: grid;
-    grid-template-columns: 1fr 46px;
+    display: flex;
+    justify-content: flex-start;
     margin-top: 8px;
   }
 
-  .add-slot-button {
-    min-height: 48px;
+  #addNoteButton {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    border-color: color-mix(in srgb, var(--line) 70%, transparent);
+    padding: 0;
+    font-size: 0;
+    color: var(--muted);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #addNoteButton svg {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+  }
+
+  .mobile-first-song-button {
+    display: inline-flex;
+    width: 100%;
+    margin-top: 14px;
   }
 
   .dialog-actions {

@@ -39,6 +39,7 @@ let activeSlidePreviewIndex = 0;
 let coachStepIndex = 0;
 let authGateActive = false;
 let cloudWorkspaceLoadedForSession = false;
+let mobileLibraryExpanded = false;
 
 const els = {
   lineupIntro: document.querySelector("#lineupIntro"),
@@ -1451,6 +1452,7 @@ function renderSavedShows() {
 function setSidePanelMode(mode) {
   sidePanelMode = mode === "shows" ? "shows" : "library";
   els.appShell.classList.remove("bank-collapsed");
+  if (sidePanelMode === "shows") setMobileLibraryExpanded(false);
   els.bankPanel?.classList.toggle("shows-mode", sidePanelMode === "shows");
   els.bankPanel?.setAttribute("aria-label", sidePanelMode === "shows" ? "Saved setlists" : "Song bank");
   if (els.sidePanelTitle) els.sidePanelTitle.textContent = sidePanelMode === "shows" ? "Setlists" : "Library";
@@ -1656,9 +1658,28 @@ function isMobileLayout() {
   return window.matchMedia("(max-width: 760px)").matches;
 }
 
-function openMobileLibraryDrawer() {
-  if (!isMobileLayout() || !els.appShell.classList.contains("bank-collapsed")) return;
-  setSidePanelMode(sidePanelMode);
+function setMobileLibraryExpanded(expanded) {
+  mobileLibraryExpanded = Boolean(expanded) && isMobileLayout();
+  els.bankPanel?.classList.toggle("mobile-expanded", mobileLibraryExpanded);
+}
+
+function openMobileLibraryDrawer(expand = false) {
+  if (!isMobileLayout()) return;
+  setSidePanelMode("library");
+  setMobileLibraryExpanded(expand);
+}
+
+function closeMobileLibraryDrawer() {
+  setMobileLibraryExpanded(false);
+  els.appShell.classList.add("bank-collapsed");
+  sidePanelMode = "library";
+  els.bankPanel?.classList.remove("shows-mode");
+  if (els.sidePanelTitle) els.sidePanelTitle.textContent = "Library";
+  if (els.libraryView) els.libraryView.hidden = false;
+  if (els.showsView) els.showsView.hidden = true;
+  if (els.newSongButton) els.newSongButton.hidden = false;
+  if (els.quickAddButton) els.quickAddButton.hidden = false;
+  els.showsTabButton?.classList.remove("active");
 }
 
 function applyTheme(theme) {
@@ -1710,6 +1731,9 @@ function renderLineup() {
         <div>
           <strong>Build your lineup here.</strong>
           Drag songs from the bank, or double-click a song to add it to the end.
+          <button class="primary-button mobile-first-song-button" type="button" id="mobileAddFirstSongButton">
+            Add first song
+          </button>
         </div>
       </div>
     `;
@@ -3468,15 +3492,7 @@ function bindEvents() {
   });
 
   els.closeBankButton.addEventListener("click", () => {
-    els.appShell.classList.add("bank-collapsed");
-    sidePanelMode = "library";
-    els.bankPanel?.classList.remove("shows-mode");
-    if (els.sidePanelTitle) els.sidePanelTitle.textContent = "Library";
-    if (els.libraryView) els.libraryView.hidden = false;
-    if (els.showsView) els.showsView.hidden = true;
-    if (els.newSongButton) els.newSongButton.hidden = false;
-    if (els.quickAddButton) els.quickAddButton.hidden = false;
-    els.showsTabButton?.classList.remove("active");
+    closeMobileLibraryDrawer();
     toast("Side panel hidden.");
   });
 
@@ -3760,10 +3776,17 @@ function bindEvents() {
 
   els.songBankList.addEventListener("click", (event) => {
     const actionEl = event.target.closest("[data-action]");
+    const row = event.target.closest(".bank-song");
+    if (isMobileLayout() && mobileLibraryExpanded && row && !event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) {
+      event.preventDefault();
+      addSongToLineup(row.dataset.songId, true);
+      return;
+    }
     if (!actionEl) return;
     const songId = actionEl.dataset.songId;
     if (actionEl.dataset.action === "add-bank") {
       event.preventDefault();
+      if (isMobileLayout() && mobileLibraryExpanded) addSongToLineup(songId, true);
       return;
     }
     if (actionEl.dataset.action === "toggle-banger") {
@@ -3973,7 +3996,7 @@ function bindPointerDragFallback() {
     if (event.button !== 0) return;
     const blockedControl = event.target.closest?.("input, select, textarea, [data-close-dialog], dialog");
     if (blockedControl) return;
-    const blockedButton = event.target.closest?.("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button, .icon-action, .ready-toggle");
+    const blockedButton = event.target.closest?.("button, a, summary, [role='button'], [data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button, .icon-action, .ready-toggle");
     if (blockedButton) return;
 
     const bankRow = event.target.closest?.(".bank-song");
@@ -4051,6 +4074,57 @@ function bindPointerDragFallback() {
   }, true);
 }
 
+function bindMobileLibraryDrawerDrag() {
+  if (!els.bankPanel || document.body.dataset.mobileLibraryDragBound) return;
+  document.body.dataset.mobileLibraryDragBound = "true";
+  let drag = null;
+
+  const finishDrag = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const deltaY = event.clientY - drag.startY;
+    els.bankPanel.classList.remove("is-dragging");
+    if (deltaY < -42) {
+      openMobileLibraryDrawer(true);
+    } else if (deltaY > 42) {
+      if (mobileLibraryExpanded) {
+        setMobileLibraryExpanded(false);
+      } else {
+        closeMobileLibraryDrawer();
+      }
+    }
+    drag = null;
+  };
+
+  els.bankPanel.addEventListener("pointerdown", (event) => {
+    if (!isMobileLayout()) return;
+    if (sidePanelMode !== "library") return;
+    if (event.target.closest("button, input, select, textarea, a, summary, .song-bank-list, .category-filters")) return;
+    drag = {
+      startY: event.clientY,
+      pointerId: event.pointerId,
+    };
+    els.bankPanel.classList.add("is-dragging");
+    els.bankPanel.setPointerCapture?.(event.pointerId);
+  });
+
+  els.bankPanel.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (Math.abs(event.clientY - drag.startY) < 6) return;
+    event.preventDefault();
+  }, { passive: false });
+
+  els.bankPanel.addEventListener("pointerup", finishDrag);
+  els.bankPanel.addEventListener("pointercancel", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    els.bankPanel.classList.remove("is-dragging");
+    drag = null;
+  });
+
+  window.addEventListener("resize", () => {
+    if (!isMobileLayout()) setMobileLibraryExpanded(false);
+  });
+}
+
 function bindEmergencyButtonDelegates() {
   if (document.body.dataset.emergencyButtonsBound) return;
   document.body.dataset.emergencyButtonsBound = "true";
@@ -4097,6 +4171,12 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
+      if (control.id === "mobileAddFirstSongButton") {
+        handled();
+        openMobileLibraryDrawer(false);
+        return;
+      }
+
       if (control.id === "saveLineupButton") {
         handled();
         commitShowMetaFromFields();
@@ -4140,8 +4220,7 @@ function bindEmergencyButtonDelegates() {
 
       if (control.id === "closeBankButton") {
         handled();
-        els.appShell.classList.add("bank-collapsed");
-        sidePanelMode = "library";
+        closeMobileLibraryDrawer();
         toast("Side panel hidden.");
         return;
       }
@@ -4294,6 +4373,9 @@ function bindEmergencyButtonDelegates() {
         const lineupId = control.dataset.lineupId;
 
         if (action === "add-bank") {
+          if (isMobileLayout() && mobileLibraryExpanded) {
+            addSongToLineup(songId, true);
+          }
           return;
         }
 
@@ -4443,6 +4525,7 @@ function startApp() {
   bindCoreFallbackEvents();
   bindOnboardingControlEvents();
   bindPointerDragFallback();
+  bindMobileLibraryDrawerDrag();
 
   try {
     populateFormOptions();

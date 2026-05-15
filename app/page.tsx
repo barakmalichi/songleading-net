@@ -73,46 +73,45 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/35 to-slate-950/88" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.25),transparent_30%)]" />
 
-        <header className="site-header relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 md:px-8" style={{ background: "rgba(15, 23, 42, 0.84)" }}>
-          <a href="/" className="flex items-center gap-3 font-black tracking-tight">
-            <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
-              <Music2 size={22} />
+        <header className="site-header relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-5" style={{ background: "rgba(15, 23, 42, 0.84)" }}>
+          <a href="/" className="site-brand flex min-w-0 items-center gap-2.5 font-black tracking-tight" aria-label="Songleading.net home">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
+              <Music2 size={19} />
             </span>
-            <span className="leading-tight">
-              <span className="block text-lg">Songleading.net</span>
-              <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-white/62">by Barak Malichi</span>
+            <span className="brand-text min-w-0 leading-tight">
+              <span className="block truncate text-base">Songleading.net</span>
+              <span className="block whitespace-nowrap text-[10px] font-black uppercase tracking-[0.14em] text-white/62">by Barak Malichi</span>
             </span>
           </a>
-          <nav className="hidden items-center gap-6 text-sm font-black text-white/78 lg:flex">
-            <a className="transition hover:text-white" href="#training">
-              Training
+          <nav className="site-icon-nav hidden items-center gap-1.5 md:flex" aria-label="Homepage sections">
+            <a className="top-symbol-button" href="#resources" aria-label="Resources" title="Resources">
+              <BookOpenText size={18} />
             </a>
-            <a className="transition hover:text-white" href="#resources">
-              Resources
+            <a className="top-symbol-button" href="#training" aria-label="Training" title="Training">
+              <GraduationCap size={18} />
             </a>
-            <a className="transition hover:text-white" href="#tools">
-              Tools
+            <a className="top-symbol-button" href="#tools" aria-label="Tools" title="Tools">
+              <Wrench size={18} />
             </a>
-            <a className="transition hover:text-white" href="#community">
-              Community
-            </a>
-            <a className="transition hover:text-white" href="#about">
-              About
+            <a className="top-symbol-button" href="#community" aria-label="Community" title="Community">
+              <Users size={18} />
             </a>
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="site-actions flex shrink-0 items-center gap-1.5">
             <HomeThemeToggle />
             <a
               href="/lineup/index.html"
-              className="hidden rounded-lg border border-white/25 bg-white/10 px-4 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-white/20 sm:inline-flex"
+              className="top-symbol-button"
+              aria-label="Start planning"
+              title="Start planning"
             >
-              Open tools
+              <Rows3 size={18} />
             </a>
             <AuthButton initialMode={initialAuthMode} />
           </div>
         </header>
 
-        <div className="relative z-10 mx-auto flex min-h-[74vh] w-full max-w-7xl items-center px-5 pb-16 pt-8 md:px-8">
+        <div className="hero-content relative z-10 mx-auto flex min-h-[74vh] w-full max-w-7xl items-center px-5 pb-16 pt-8 md:px-8">
           <div className="hero-copy hero-copy-modern">
             <h1 className="hero-heading max-w-5xl text-5xl font-black leading-[0.94] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
               The home of modern <span className="songleading-shine" aria-label="SONGLEADING">
