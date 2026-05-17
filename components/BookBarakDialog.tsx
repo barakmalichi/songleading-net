@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { CalendarDays, Send, X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 const instituteTypes = [
   "Camp",
@@ -13,6 +14,7 @@ const instituteTypes = [
 ];
 
 export function BookBarakDialog() {
+  const dialogScrollRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -24,12 +26,29 @@ export function BookBarakDialog() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    document.body.classList.add("account-dialog-open");
+    const scrollDialogTop = () => {
+      const scroller = dialogScrollRef.current;
+      if (!scroller) return;
+      scroller.scrollTop = 0;
+    };
+    const frame = window.requestAnimationFrame(scrollDialogTop);
+    const fallback = window.setTimeout(scrollDialogTop, 90);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(fallback);
+      document.body.classList.remove("account-dialog-open");
+    };
+  }, [open]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setStatus("");
     const details = [
-      `Booking request`,
+      `Let's meet inquiry`,
       `Name: ${name || "-"}`,
       `Email: ${email || "-"}`,
       `Phone: ${phone || "-"}`,
@@ -60,7 +79,7 @@ export function BookBarakDialog() {
       setInstituteName("");
       setPreferredDates("");
       setMessage("");
-      setStatus("Booking request sent.");
+      setStatus("Thanks - I'll be in touch soon.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not send request.");
     } finally {
@@ -78,8 +97,8 @@ export function BookBarakDialog() {
         Book Barak
         <CalendarDays size={18} />
       </button>
-      {open ? (
-        <div className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-slate-950/50 px-4 py-6 backdrop-blur-sm">
+      {open && typeof document !== "undefined" ? createPortal(
+        <div ref={dialogScrollRef} className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-950/50 px-4 py-6 backdrop-blur-sm">
           <section className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl">
             <header className="flex items-start justify-between gap-4">
               <div>
@@ -132,13 +151,14 @@ export function BookBarakDialog() {
                 disabled={busy || !name.trim() || !email.trim()}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-700 disabled:opacity-60"
               >
-                {busy ? "Sending..." : "Send booking request"}
+                {busy ? "Sending..." : "Let's meet!"}
                 <Send size={17} />
               </button>
               {status ? <p className="text-sm font-black leading-5 text-slate-600">{status}</p> : null}
             </form>
           </section>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );

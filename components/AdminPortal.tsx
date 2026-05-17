@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { getValidSession } from "@/lib/cloudClient";
 import {
-  defaultHomepageAboutContent,
-  normalizeHomepageAboutContent,
-  type HomepageAboutContent
+  defaultHomepageContent,
+  normalizeHomepageContent,
+  type HomepageCardContent,
+  type HomepageContent
 } from "@/lib/homepageContent";
 
 type AdminUser = {
@@ -45,11 +46,64 @@ function metadataValue(user: AdminUser, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function listToLines(items: string[]) {
+  return items.join("\n");
+}
+
+function linesToList(value: string) {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function cardsToLines(items: HomepageCardContent[]) {
+  return items.map((item) => `${item.title} | ${item.text}`).join("\n");
+}
+
+function linesToCards(value: string) {
+  return value
+    .split("\n")
+    .map((line) => {
+      const [title, ...rest] = line.split("|");
+      return { title: title?.trim() || "", text: rest.join("|").trim() };
+    })
+    .filter((item) => item.title || item.text);
+}
+
+type FieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+  help?: string;
+};
+
+function Field({ label, value, onChange, rows = 1, help }: FieldProps) {
+  return (
+    <label className="grid gap-2 text-sm font-black">
+      {label}
+      {rows > 1 ? (
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          rows={rows}
+          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold leading-6 outline-none focus:border-blue-500"
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
+        />
+      )}
+      {help ? <span className="-mt-1 text-xs font-bold leading-5 text-slate-500">{help}</span> : null}
+    </label>
+  );
+}
+
 export function AdminPortal() {
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [message, setMessage] = useState("Loading admin portal...");
-  const [aboutContent, setAboutContent] = useState<HomepageAboutContent>(defaultHomepageAboutContent);
-  const [aboutStatus, setAboutStatus] = useState("");
+  const [homeContent, setHomeContent] = useState<HomepageContent>(defaultHomepageContent);
+  const [homeStatus, setHomeStatus] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -66,9 +120,9 @@ export function AdminPortal() {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || "Could not load admin portal.");
         setData(payload);
-        const aboutResponse = await fetch("/api/homepage/about", { cache: "no-store" });
-        const aboutPayload = await aboutResponse.json().catch(() => ({}));
-        if (aboutResponse.ok) setAboutContent(normalizeHomepageAboutContent(aboutPayload.content || {}));
+        const contentResponse = await fetch("/api/homepage/content", { cache: "no-store" });
+        const contentPayload = await contentResponse.json().catch(() => ({}));
+        if (contentResponse.ok) setHomeContent(normalizeHomepageContent(contentPayload.content || {}));
         setMessage("");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Could not load the admin portal.");
@@ -77,13 +131,13 @@ export function AdminPortal() {
     load();
   }, []);
 
-  async function saveAboutContent() {
-    const nextContent = normalizeHomepageAboutContent(aboutContent);
+  async function saveHomeContent() {
+    const nextContent = normalizeHomepageContent(homeContent);
     try {
       const session = await getValidSession();
       if (!session?.access_token) throw new Error("Sign in as Barak to save homepage edits.");
-      setAboutStatus("Saving...");
-      const response = await fetch("/api/homepage/about", {
+      setHomeStatus("Saving...");
+      const response = await fetch("/api/homepage/content", {
         method: "PUT",
         headers: {
           authorization: `Bearer ${session.access_token}`,
@@ -93,11 +147,12 @@ export function AdminPortal() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Could not save homepage edits.");
-      setAboutContent(normalizeHomepageAboutContent(payload.content || nextContent));
-      window.dispatchEvent(new CustomEvent("homepage-about-updated", { detail: payload.content || nextContent }));
-      setAboutStatus("Saved online.");
+      const savedContent = normalizeHomepageContent(payload.content || nextContent);
+      setHomeContent(savedContent);
+      window.dispatchEvent(new CustomEvent("homepage-content-updated", { detail: savedContent }));
+      setHomeStatus("Saved online.");
     } catch (error) {
-      setAboutStatus(error instanceof Error ? error.message : "Could not save homepage edits.");
+      setHomeStatus(error instanceof Error ? error.message : "Could not save homepage edits.");
     }
   }
 
@@ -124,16 +179,29 @@ export function AdminPortal() {
     }
   }
 
-  async function handleAboutImageChange(file?: File) {
+  async function handleImageChange(path: "hero" | "resources" | "training" | "community" | "about", file?: File) {
     if (!file) return;
     try {
-      setAboutStatus("Preparing image...");
+      setHomeStatus("Preparing image...");
       const image = await resizeImageToDataUrl(file);
-      setAboutContent((current) => ({ ...current, image }));
-      setAboutStatus("Image ready. Save About to publish it online.");
+      setHomeContent((current) => {
+        if (path === "about") return { ...current, about: { ...current.about, image } };
+        return { ...current, [path]: { ...current[path], image } };
+      });
+      setHomeStatus("Image ready. Save homepage to publish it online.");
     } catch (error) {
-      setAboutStatus(error instanceof Error ? error.message : "Could not prepare that image.");
+      setHomeStatus(error instanceof Error ? error.message : "Could not prepare that image.");
     }
+  }
+
+  function updateSection<Key extends keyof HomepageContent>(key: Key, patch: Partial<HomepageContent[Key]>) {
+    setHomeContent((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] as object),
+        ...patch
+      } as HomepageContent[Key]
+    }));
   }
 
   return (
@@ -164,77 +232,148 @@ export function AdminPortal() {
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Homepage</p>
-                  <h2 className="mt-1 text-2xl font-black">About Section</h2>
+                  <h2 className="mt-1 text-2xl font-black">Homepage Content</h2>
                   <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
-                    Edit the public About block from this admin account, including the portrait that appears on the homepage.
+                    Edit the public homepage text and pictures from this admin account. Paste an image path, or upload a picture and save.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={saveAboutContent}
+                  onClick={saveHomeContent}
                   className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white hover:bg-blue-700"
                 >
-                  Save About
+                  Save Homepage
                 </button>
               </div>
-              {aboutStatus ? <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-900">{aboutStatus}</p> : null}
-              <div className="mt-5 grid gap-4 lg:grid-cols-[260px_1fr]">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="aspect-[4/5] overflow-hidden rounded-xl bg-slate-900">
-                    <img src={aboutContent.image} alt="" className="h-full w-full object-cover" />
+              {homeStatus ? <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-900">{homeStatus}</p> : null}
+              <div className="mt-5 grid gap-5">
+                <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="aspect-[4/5] overflow-hidden rounded-xl bg-slate-900">
+                      <img src={homeContent.hero.image} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
+                      Upload hero picture
+                      <input type="file" accept="image/*" className="sr-only" onChange={(event) => handleImageChange("hero", event.target.files?.[0])} />
+                    </label>
                   </div>
-                  <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
-                    Change picture
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(event) => handleAboutImageChange(event.target.files?.[0])}
-                    />
-                  </label>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Hero</h3>
+                    <Field label="Hero image path" value={homeContent.hero.image} onChange={(image) => updateSection("hero", { image })} />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Headline before shine" value={homeContent.hero.headlinePrefix} onChange={(headlinePrefix) => updateSection("hero", { headlinePrefix })} />
+                      <Field label="Shining word" value={homeContent.hero.shineWord} onChange={(shineWord) => updateSection("hero", { shineWord })} />
+                    </div>
+                    <Field label="Subheadline" value={homeContent.hero.subheadline} onChange={(subheadline) => updateSection("hero", { subheadline })} />
+                    <Field label="Intro text" value={homeContent.hero.text} onChange={(text) => updateSection("hero", { text })} rows={2} />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Primary button" value={homeContent.hero.primaryLabel} onChange={(primaryLabel) => updateSection("hero", { primaryLabel })} />
+                      <Field label="Secondary button" value={homeContent.hero.secondaryLabel} onChange={(secondaryLabel) => updateSection("hero", { secondaryLabel })} />
+                    </div>
+                  </div>
                 </div>
-                <div className="grid gap-4">
-                <label className="grid gap-2 text-sm font-black">
-                  Name
-                  <input
-                    value={aboutContent.name}
-                    onChange={(event) => setAboutContent((current) => ({ ...current, name: event.target.value }))}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-black">
-                  Portrait image path
-                  <input
-                    value={aboutContent.image}
-                    onChange={(event) => setAboutContent((current) => ({ ...current, image: event.target.value }))}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-black">
-                  Title
-                  <input
-                    value={aboutContent.title}
-                    onChange={(event) => setAboutContent((current) => ({ ...current, title: event.target.value }))}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-black">
-                  Bio
-                  <textarea
-                    value={aboutContent.text}
-                    onChange={(event) => setAboutContent((current) => ({ ...current, text: event.target.value }))}
-                    rows={4}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold leading-6 outline-none focus:border-blue-500"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-black">
-                  Highlights
-                  <input
-                    value={aboutContent.highlights.join(", ")}
-                    onChange={(event) => setAboutContent((current) => ({ ...current, highlights: event.target.value.split(",") }))}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-blue-500"
-                  />
-                </label>
+
+                <div className="grid gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[240px_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="aspect-[4/3] overflow-hidden rounded-xl bg-slate-900">
+                      <img src={homeContent.resources.image} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
+                      Upload resources picture
+                      <input type="file" accept="image/*" className="sr-only" onChange={(event) => handleImageChange("resources", event.target.files?.[0])} />
+                    </label>
+                  </div>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Resources</h3>
+                    <Field label="Image path" value={homeContent.resources.image} onChange={(image) => updateSection("resources", { image })} />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Image eyebrow" value={homeContent.resources.imageEyebrow} onChange={(imageEyebrow) => updateSection("resources", { imageEyebrow })} />
+                      <Field label="Section eyebrow" value={homeContent.resources.eyebrow} onChange={(eyebrow) => updateSection("resources", { eyebrow })} />
+                    </div>
+                    <Field label="Image title" value={homeContent.resources.imageTitle} onChange={(imageTitle) => updateSection("resources", { imageTitle })} />
+                    <Field label="Section title" value={homeContent.resources.title} onChange={(title) => updateSection("resources", { title })} />
+                    <Field label="Section text" value={homeContent.resources.text} onChange={(text) => updateSection("resources", { text })} rows={2} />
+                    <Field label="Badges" value={listToLines(homeContent.resources.badges)} onChange={(value) => updateSection("resources", { badges: linesToList(value) })} rows={3} help="One badge per line." />
+                    <Field label="Resource cards" value={cardsToLines(homeContent.resources.cards)} onChange={(value) => updateSection("resources", { cards: linesToCards(value) })} rows={6} help="One card per line. Use: Title | Description" />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[240px_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="aspect-[4/3] overflow-hidden rounded-xl bg-slate-900">
+                      <img src={homeContent.training.image} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
+                      Upload training picture
+                      <input type="file" accept="image/*" className="sr-only" onChange={(event) => handleImageChange("training", event.target.files?.[0])} />
+                    </label>
+                  </div>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Training</h3>
+                    <Field label="Image path" value={homeContent.training.image} onChange={(image) => updateSection("training", { image })} />
+                    <Field label="Eyebrow" value={homeContent.training.eyebrow} onChange={(eyebrow) => updateSection("training", { eyebrow })} />
+                    <Field label="Title" value={homeContent.training.title} onChange={(title) => updateSection("training", { title })} />
+                    <Field label="Text" value={homeContent.training.text} onChange={(text) => updateSection("training", { text })} rows={3} />
+                    <Field label="Second text" value={homeContent.training.secondText} onChange={(secondText) => updateSection("training", { secondText })} rows={3} />
+                    <Field label="Desktop pills" value={listToLines(homeContent.training.pills)} onChange={(value) => updateSection("training", { pills: linesToList(value) })} rows={4} help="Shown on desktop only." />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2">
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Tools</h3>
+                    <Field label="Eyebrow" value={homeContent.tools.eyebrow} onChange={(eyebrow) => updateSection("tools", { eyebrow })} />
+                    <Field label="Title" value={homeContent.tools.title} onChange={(title) => updateSection("tools", { title })} />
+                    <Field label="Text" value={homeContent.tools.text} onChange={(text) => updateSection("tools", { text })} rows={3} />
+                    <Field label="Button label" value={homeContent.tools.buttonLabel} onChange={(buttonLabel) => updateSection("tools", { buttonLabel })} />
+                    <Field label="Preview eyebrow" value={homeContent.tools.previewEyebrow} onChange={(previewEyebrow) => updateSection("tools", { previewEyebrow })} />
+                    <Field label="Preview title" value={homeContent.tools.previewTitle} onChange={(previewTitle) => updateSection("tools", { previewTitle })} />
+                  </div>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Footer</h3>
+                    <Field label="Footer text" value={homeContent.footer.text} onChange={(text) => updateSection("footer", { text })} />
+                    <Field label="Footer note" value={homeContent.footer.note} onChange={(note) => updateSection("footer", { note })} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[240px_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="aspect-[4/3] overflow-hidden rounded-xl bg-slate-900">
+                      <img src={homeContent.community.image} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
+                      Upload community picture
+                      <input type="file" accept="image/*" className="sr-only" onChange={(event) => handleImageChange("community", event.target.files?.[0])} />
+                    </label>
+                  </div>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">Community</h3>
+                    <Field label="Image path" value={homeContent.community.image} onChange={(image) => updateSection("community", { image })} />
+                    <Field label="Eyebrow" value={homeContent.community.eyebrow} onChange={(eyebrow) => updateSection("community", { eyebrow })} />
+                    <Field label="Title" value={homeContent.community.title} onChange={(title) => updateSection("community", { title })} rows={2} help="Line breaks are kept on the homepage." />
+                    <Field label="Text" value={homeContent.community.text} onChange={(text) => updateSection("community", { text })} rows={3} />
+                    <Field label="Second text" value={homeContent.community.secondText} onChange={(secondText) => updateSection("community", { secondText })} rows={3} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[240px_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="aspect-[4/5] overflow-hidden rounded-xl bg-slate-900">
+                      <img src={homeContent.about.image} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-900 hover:border-blue-400">
+                      Upload Barak picture
+                      <input type="file" accept="image/*" className="sr-only" onChange={(event) => handleImageChange("about", event.target.files?.[0])} />
+                    </label>
+                  </div>
+                  <div className="grid gap-4">
+                    <h3 className="text-xl font-black">About</h3>
+                    <Field label="Name" value={homeContent.about.name} onChange={(name) => updateSection("about", { name })} />
+                    <Field label="Portrait image path" value={homeContent.about.image} onChange={(image) => updateSection("about", { image })} />
+                    <Field label="Title" value={homeContent.about.title} onChange={(title) => updateSection("about", { title })} />
+                    <Field label="Bio" value={homeContent.about.text} onChange={(text) => updateSection("about", { text })} rows={4} />
+                    <Field label="Highlights" value={listToLines(homeContent.about.highlights)} onChange={(value) => updateSection("about", { highlights: linesToList(value) })} rows={4} help="One highlight per line." />
+                  </div>
                 </div>
               </div>
             </section>
