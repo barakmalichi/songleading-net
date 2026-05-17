@@ -162,21 +162,65 @@ async function getAdminUserId() {
   return admin.id;
 }
 
+type ServiceWorkspaceRow = {
+  lineup_state?: unknown;
+  studio_data?: unknown;
+  updated_at?: string;
+};
+
+async function serviceReadWorkspace(userId: string): Promise<ServiceWorkspaceRow | null> {
+  const rows = await serviceGet(
+    `/rest/v1/user_workspaces?user_id=eq.${encodeURIComponent(userId)}&select=lineup_state,studio_data,updated_at&limit=1`
+  );
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function serviceUpsertWorkspace(userId: string, payload: WorkspacePayload) {
+  const current = await serviceReadWorkspace(userId);
+  const next = {
+    user_id: userId,
+    lineup_state: Object.prototype.hasOwnProperty.call(payload, "lineupState")
+      ? payload.lineupState
+      : current?.lineup_state ?? {},
+    studio_data: Object.prototype.hasOwnProperty.call(payload, "studioData")
+      ? payload.studioData
+      : current?.studio_data ?? {},
+    updated_at: new Date().toISOString()
+  };
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/user_workspaces?on_conflict=user_id`, {
+    method: "POST",
+    headers: {
+      ...serviceHeaders(),
+      prefer: "resolution=merge-duplicates,return=representation"
+    },
+    body: JSON.stringify(next)
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(details || "Could not save homepage content permanently.");
+  }
+
+  const rows = (await response.json().catch(() => [])) as unknown[];
+  return rows[0] || next;
+}
+
 export async function readHomepageAboutContent() {
   const content = await readHomepageContent();
   if (isRecord(content) && isRecord(content.about)) return content.about;
   return null;
 }
 
-export async function saveHomepageAboutContent(token: string, user: SupabaseUser, content: unknown) {
+export async function saveHomepageAboutContent(_token: string, user: SupabaseUser, content: unknown) {
   if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
     throw new Error("This admin area is private.");
   }
 
-  const current = await readWorkspace(token, user.id);
+  const current = await serviceReadWorkspace(user.id);
   const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
   const currentHomepageContent = isRecord(currentStudioData.homepageContent) ? currentStudioData.homepageContent : {};
-  return upsertWorkspace(token, user.id, {
+  return serviceUpsertWorkspace(user.id, {
     studioData: {
       ...currentStudioData,
       homepageAboutContent: content,
@@ -192,10 +236,8 @@ export async function readHomepageContent() {
   if (!cloudIsConfigured()) return null;
 
   const adminUserId = await getAdminUserId();
-  const rows = await serviceGet(
-    `/rest/v1/user_workspaces?user_id=eq.${encodeURIComponent(adminUserId)}&select=studio_data&limit=1`
-  );
-  const studioData = Array.isArray(rows) ? rows[0]?.studio_data : null;
+  const workspace = await serviceReadWorkspace(adminUserId);
+  const studioData = workspace?.studio_data;
   if (!isRecord(studioData)) return null;
   if (isRecord(studioData.homepageContent)) return studioData.homepageContent;
   if (isRecord(studioData.homepageAboutContent)) {
@@ -204,15 +246,15 @@ export async function readHomepageContent() {
   return null;
 }
 
-export async function saveHomepageContent(token: string, user: SupabaseUser, content: unknown) {
+export async function saveHomepageContent(_token: string, user: SupabaseUser, content: unknown) {
   if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
     throw new Error("This admin area is private.");
   }
 
-  const current = await readWorkspace(token, user.id);
+  const current = await serviceReadWorkspace(user.id);
   const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
   const aboutContent = isRecord(content) && isRecord(content.about) ? content.about : currentStudioData.homepageAboutContent;
-  return upsertWorkspace(token, user.id, {
+  return serviceUpsertWorkspace(user.id, {
     studioData: {
       ...currentStudioData,
       homepageContent: content,

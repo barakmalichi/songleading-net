@@ -147,10 +147,13 @@ export function AdminPortal() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Could not save homepage edits.");
-      const savedContent = normalizeHomepageContent(payload.content || nextContent);
+      const verifyResponse = await fetch(`/api/homepage/content?saved=${Date.now()}`, { cache: "no-store" });
+      const verifyPayload = await verifyResponse.json().catch(() => ({}));
+      if (!verifyResponse.ok) throw new Error(verifyPayload.error || "Saved, but could not verify the permanent copy.");
+      const savedContent = normalizeHomepageContent(verifyPayload.content || payload.content || nextContent);
       setHomeContent(savedContent);
       window.dispatchEvent(new CustomEvent("homepage-content-updated", { detail: savedContent }));
-      setHomeStatus("Saved online.");
+      setHomeStatus("Saved permanently online.");
     } catch (error) {
       setHomeStatus(error instanceof Error ? error.message : "Could not save homepage edits.");
     }

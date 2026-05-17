@@ -10,7 +10,10 @@ export function HomeScrollEffects() {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          entry.target.classList.toggle("section-built", entry.isIntersecting && entry.intersectionRatio >= getBuildThreshold());
+          if (entry.isIntersecting && entry.intersectionRatio >= getBuildThreshold()) {
+            entry.target.classList.add("section-built");
+            observer.unobserve(entry.target);
+          }
         });
       },
       {

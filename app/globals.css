@@ -29,6 +29,21 @@ body {
   overscroll-behavior-y: none;
 }
 
+@media (min-width: 1201px) and (pointer: fine) {
+  html {
+    scroll-snap-type: y proximity;
+  }
+
+  .hero-section,
+  .focus-resources-section,
+  .story-section,
+  .tools-section,
+  .community-section,
+  .about-section {
+    scroll-snap-stop: normal;
+  }
+}
+
 html[data-site-theme="dark"] {
   --background: #070b12;
   --foreground: #f8fafc;
@@ -118,6 +133,17 @@ select:focus-visible {
 .community-section,
 .about-section {
   align-items: center;
+}
+
+@media (min-width: 1201px) and (pointer: fine) {
+  .hero-section,
+  .focus-resources-section,
+  .story-section,
+  .tools-section,
+  .community-section,
+  .about-section {
+    scroll-snap-stop: normal;
+  }
 }
 
 .community-section,

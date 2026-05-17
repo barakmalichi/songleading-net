@@ -118,7 +118,7 @@ export function HomeContentBridge() {
 
     async function loadContent() {
       try {
-        const response = await fetch("/api/homepage/content", { cache: "no-store" });
+        const response = await fetch(`/api/homepage/content?load=${Date.now()}`, { cache: "no-store" });
         const data = await response.json().catch(() => ({}));
         if (!active || !response.ok) return;
         const content = normalizeHomepageContent(data.content || {});

@@ -20,7 +20,7 @@ export function HomeAboutSection() {
 
     async function loadContent() {
       try {
-        const response = await fetch("/api/homepage/content", { cache: "no-store" });
+        const response = await fetch(`/api/homepage/content?about=${Date.now()}`, { cache: "no-store" });
         const data = await response.json().catch(() => ({}));
         if (active && response.ok) setContent(normalizeHomepageContent(data.content || {}).about);
       } catch {

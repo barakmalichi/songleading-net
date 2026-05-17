@@ -308,7 +308,7 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
 
       {mode !== "closed" && mounted && typeof document !== "undefined" ? createPortal(
         <div className="account-dialog-backdrop fixed inset-0 isolate grid place-items-center overflow-y-auto bg-slate-950/55 px-3 py-5 backdrop-blur-md sm:px-4 sm:py-6">
-          <section className="account-dialog-card relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl ring-1 ring-slate-950/10">
+          <section className="account-dialog-card relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl ring-1 ring-slate-950/10 sm:max-w-[34rem]">
             <header className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Account</p>
