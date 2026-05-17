@@ -37,6 +37,7 @@ const safeIdPattern = /^[A-Za-z0-9:_-]{1,96}$/;
 const slideStatusValues = new Set(["no-slides", "needs-review", "slides-ready"]);
 const defaultSlideDesign = { theme: "default", fontSize: 56 };
 const defaultSlideExportTheme = { name: "default", image: "", presetName: "", crop: { x: 50, y: 50, zoom: 100 } };
+const slideTextWeight = 700;
 const pptxMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const slideThemeOptions = [
   { id: "default", label: "Dark" },
@@ -266,6 +267,7 @@ const els = {
   accountSignedIn: document.querySelector("#accountSignedIn"),
   accountEmail: document.querySelector("#accountEmail"),
   accountPassword: document.querySelector("#accountPassword"),
+  accountPasswordToggle: document.querySelector("#accountPasswordToggle"),
   accountSignInModeButton: document.querySelector("#accountSignInModeButton"),
   accountSignUpModeButton: document.querySelector("#accountSignUpModeButton"),
   accountSignupFields: document.querySelector("#accountSignupFields"),
@@ -534,7 +536,7 @@ function normalizeLocalSlideSong(slideSong = {}) {
     updatedAt: safeText(slideSong.updatedAt, 40),
     design: {
       theme: slideThemeOptions.some((option) => option.id === slideSong.design?.theme) ? slideSong.design.theme : defaultSlideDesign.theme,
-      fontSize: clampNumber(Number(slideSong.design?.fontSize) || defaultSlideDesign.fontSize, 22, 78),
+      fontSize: clampNumber(Number(slideSong.design?.fontSize) || defaultSlideDesign.fontSize, 18, 78),
     },
     sections: safeSections,
     savedFlows: savedFlows.length ? savedFlows : [normalizeSlideFlow({ selectedSectionInstances: [{ sectionId: safeSections[0].id }] }, safeSections)],
@@ -1202,6 +1204,17 @@ function setAccountMode(mode) {
   updateAccountDialog();
 }
 
+function toggleAccountPasswordVisibility() {
+  if (!els.accountPassword || !els.accountPasswordToggle) return;
+  const showing = els.accountPassword.type === "text";
+  els.accountPassword.type = showing ? "password" : "text";
+  const label = showing ? "Show password" : "Hide password";
+  els.accountPasswordToggle.setAttribute("aria-label", label);
+  els.accountPasswordToggle.setAttribute("aria-pressed", String(!showing));
+  els.accountPasswordToggle.title = label;
+  els.accountPassword.focus();
+}
+
 function updateAccountUseCaseFields() {
   const value = els.accountUseCase?.value || "";
   if (els.accountCampField) els.accountCampField.hidden = value !== "Summer camp";
@@ -1222,6 +1235,12 @@ function openAccountDialog() {
   if (session?.user?.email && els.accountEmail) els.accountEmail.value = session.user.email;
   populateAccountProfile(session?.user?.user_metadata || {});
   if (els.accountPassword) els.accountPassword.value = "";
+  if (els.accountPassword) els.accountPassword.type = "password";
+  if (els.accountPasswordToggle) {
+    els.accountPasswordToggle.setAttribute("aria-label", "Show password");
+    els.accountPasswordToggle.setAttribute("aria-pressed", "false");
+    els.accountPasswordToggle.title = "Show password";
+  }
   updateAccountDialog();
   openDialog(els.accountDialog);
 }
@@ -1774,6 +1793,14 @@ function normalizeSlidesDraft(slides) {
   return normalized.length ? normalized : [];
 }
 
+function slidesEditorDisplayFontSize(fontSize) {
+  const rawSize = Number(fontSize) || defaultSlideDesign.fontSize;
+  if (window.matchMedia("(min-width: 761px) and (max-width: 1200px) and (orientation: landscape)").matches) {
+    return Math.round(clampNumber(rawSize, 18, 44));
+  }
+  return Math.round(rawSize);
+}
+
 function slidesFromStudioSong(slideSong) {
   if (!slideSong) return [];
   return normalizeSlidesDraft(buildSlidesFromStudioSong(slideSong).map((slide) => ({ lines: slide.lines || [] })));
@@ -1782,7 +1809,7 @@ function slidesFromStudioSong(slideSong) {
 function slideDesignFromStudioSong(slideSong) {
   const design = slideSong?.design || {};
   const theme = slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme;
-  const fontSize = clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 22, 78);
+  const fontSize = clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 18, 78);
   return { theme, fontSize };
 }
 
@@ -1808,7 +1835,7 @@ function studioSongFromSlides(song, slides, existingSlideSong = null, design = d
     updatedAt: new Date().toISOString(),
     design: {
       theme: slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme,
-      fontSize: clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 22, 78),
+      fontSize: clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 18, 78),
     },
     sections: [{
       id: sectionId,
@@ -2063,6 +2090,7 @@ function renderSlidesEditor(preserveCurrentText = false) {
   if (els.slidesLivePreview) {
     els.slidesLivePreview.className = `slides-live-preview theme-${activeSlidesDesign.theme}`;
     els.slidesLivePreview.style.setProperty("--slide-editor-font-size", `${activeSlidesDesign.fontSize}px`);
+    els.slidesLivePreview.style.setProperty("--slide-editor-display-font-size", `${slidesEditorDisplayFontSize(activeSlidesDesign.fontSize)}px`);
     els.slidesLivePreview.innerHTML = `
       <div class="slides-live-lines">
         ${previewLines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
@@ -2317,7 +2345,7 @@ function splitSlidesEditorSlide() {
 }
 
 function changeSlidesEditorFont(delta) {
-  const nextSize = clampNumber((Number(activeSlidesDesign.fontSize) || defaultSlideDesign.fontSize) + delta, 22, 78);
+  const nextSize = clampNumber((Number(activeSlidesDesign.fontSize) || defaultSlideDesign.fontSize) + delta, 18, 78);
   if (nextSize === activeSlidesDesign.fontSize) return;
   recordSlidesUndo();
   activeSlidesDesign.fontSize = nextSize;
@@ -2368,7 +2396,7 @@ function slideTextFitsAtSize(lines, fontSize, availableWidth, availableHeight) {
   const canvas = slideTextFitsAtSize.canvas || (slideTextFitsAtSize.canvas = document.createElement("canvas"));
   const context = canvas.getContext("2d");
   if (!context) return true;
-  context.font = `900 ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
+  context.font = `${slideTextWeight} ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
   const wrappedLines = lines.reduce((count, line) => count + wrappedLineCount(context, line, availableWidth), 0);
   const lineHeight = fontSize * 1.05;
   const gapHeight = Math.max(0, wrappedLines - 1) * fontSize * 0.18;
@@ -2384,11 +2412,12 @@ function fitSlidesEditorFontToScreen() {
   const computed = preview ? window.getComputedStyle(preview) : null;
   const paddingX = computed ? parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight) : 96;
   const paddingY = computed ? parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom) : 96;
+  const watermarkReserve = Math.max(42, Math.min(74, (previewRect?.height || 540) * 0.11));
   const width = Math.max(120, (previewRect?.width || 960) - paddingX - 24);
-  const height = Math.max(90, (previewRect?.height || 540) - paddingY - 48);
-  let low = 22;
-  let high = 78;
-  let best = 22;
+  const height = Math.max(90, (previewRect?.height || 540) - paddingY - watermarkReserve);
+  let low = 18;
+  let high = defaultSlideDesign.fontSize;
+  let best = 18;
 
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
@@ -2400,7 +2429,7 @@ function fitSlidesEditorFontToScreen() {
     }
   }
 
-  const nextSize = Math.round(clampNumber(best, 22, 78));
+  const nextSize = Math.round(clampNumber(best, 18, defaultSlideDesign.fontSize));
   if (nextSize === activeSlidesDesign.fontSize) return;
   recordSlidesUndo();
   activeSlidesDesign.fontSize = nextSize;
@@ -2491,6 +2520,7 @@ function buildSlidesFromStudioSong(slideSong, flowId = "") {
     title: slideSong.title || "Untitled",
     section: Array.from(new Set(slideLines.map((line) => line.sectionName).filter(Boolean))).join(" / "),
     lines: slideLines.map((line) => line.text),
+    design: slideDesignFromStudioSong(slideSong),
   }));
 }
 
@@ -2618,8 +2648,9 @@ function renderSlidePreview() {
   const kind = ["note", "missing", "image"].includes(slide.kind) ? slide.kind : "lyrics";
   const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
   const showTitle = Boolean(state.show.slideExportShowTitles);
+  const design = slideDesignFromStudioSong({ design: slide.design || defaultSlideDesign });
   els.slidePreviewStage.innerHTML = `
-    <div class="mini-slide ${kind}${showTitle && kind !== "image" ? " has-title" : ""}">
+    <div class="mini-slide ${kind} theme-${design.theme}${showTitle && kind !== "image" ? " has-title" : ""}" style="--mini-slide-font-size:${Math.max(12, Math.round(design.fontSize * 0.3))}px">
       <div class="mini-slide-meta">${escapeHtml(slide.meta || "")}</div>
       ${kind === "image" && slide.image ? `
         <div class="mini-slide-image" style="background-image:url(&quot;${cssUrl(slide.image)}&quot;)"></div>
@@ -3074,7 +3105,7 @@ async function drawFullBleedCanvasImage(context, width, height, src) {
 }
 
 function slideCanvasFont(fontSize, italic = false) {
-  return `${italic ? "italic " : ""}900 ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
+  return `${italic ? "italic " : ""}${slideTextWeight} ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
 }
 
 function wrapCanvasLine(context, line, maxWidth) {
@@ -3107,8 +3138,8 @@ function slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic = fals
 
 function fitSlideCanvasText(context, lines, maxWidth, maxHeight, kind) {
   const italic = kind === "note";
-  const maxFont = kind === "missing" ? 72 : kind === "note" ? 82 : 92;
-  const minFont = 30;
+  const maxFont = kind === "missing" ? 58 : kind === "note" ? 68 : defaultSlideDesign.fontSize;
+  const minFont = 22;
   let fallback = slideCanvasTextLayout(context, lines, minFont, maxWidth, italic);
   for (let fontSize = maxFont; fontSize >= minFont; fontSize -= 2) {
     const layout = slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic);
@@ -3133,36 +3164,36 @@ function drawCanvasFittedText(context, text, x, y, maxWidth) {
 function drawSlideWatermark(context, width, height, palette) {
   context.save();
   const markColor = palette.watermark;
-  const right = width - 30;
-  const bottom = height - 22;
+  const right = width - 24;
+  const bottom = height - 18;
   context.globalAlpha = 1;
   context.textBaseline = "alphabetic";
   context.textAlign = "right";
   context.fillStyle = markColor;
-  context.font = "800 10px Inter, Arial, Helvetica, sans-serif";
-  context.fillText("Created with", right, bottom - 22);
+  context.font = "700 8px Inter, Arial, Helvetica, sans-serif";
+  context.fillText("Created with", right, bottom - 17);
 
-  const logoWidth = 158;
-  const logoHeight = 26;
-  const iconSize = 23;
+  const logoWidth = 126;
+  const logoHeight = 21;
+  const iconSize = 18;
   const x = right - logoWidth;
-  const y = bottom - logoHeight + 2;
+  const y = bottom - logoHeight + 1;
   context.strokeStyle = markColor;
-  context.lineWidth = 1.1;
+  context.lineWidth = 0.95;
   context.beginPath();
-  canvasRoundRectPath(context, x, y, iconSize, iconSize, 6);
+  canvasRoundRectPath(context, x, y, iconSize, iconSize, 5);
   context.stroke();
-  context.font = "900 15px Inter, Arial, Helvetica, sans-serif";
+  context.font = "700 12px Inter, Arial, Helvetica, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText("♪", x + iconSize / 2, y + iconSize / 2);
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.font = "900 12px Inter, Arial, Helvetica, sans-serif";
-  context.fillText("Songleading.net", x + 31, y + 11);
-  context.font = "900 5.5px Inter, Arial, Helvetica, sans-serif";
+  context.font = "700 9.5px Inter, Arial, Helvetica, sans-serif";
+  context.fillText("Songleading.net", x + 25, y + 9);
+  context.font = "700 4.8px Inter, Arial, Helvetica, sans-serif";
   context.letterSpacing = "1px";
-  context.fillText("BY BARAK MALICHI", x + 31, y + 21);
+  context.fillText("BY BARAK MALICHI", x + 25, y + 17);
   context.restore();
 }
 
@@ -3186,7 +3217,9 @@ async function renderSlideToCanvas(slide, theme = {}, options = {}) {
   await drawSlideBackground(context, width, height, theme, kind);
 
   const maxWidth = width * 0.82;
-  const maxHeight = height * 0.66;
+  const safeTop = options.showTitles && slide.title ? 108 : 82;
+  const safeBottom = height - 96;
+  const maxHeight = Math.max(220, safeBottom - safeTop);
   const layout = fitSlideCanvasText(context, lines.length ? lines : ["Instrumental"], maxWidth, maxHeight, kind);
   const textColor = kind === "note" ? palette.note : kind === "missing" ? palette.missing : palette.ink;
   context.save();
@@ -3197,7 +3230,7 @@ async function renderSlideToCanvas(slide, theme = {}, options = {}) {
   context.shadowColor = palette.shadow;
   context.shadowBlur = palette.shadow === "rgba(255, 255, 255, 0)" ? 0 : 22;
   context.shadowOffsetY = palette.shadow === "rgba(255, 255, 255, 0)" ? 0 : 4;
-  let y = height / 2 - layout.totalHeight / 2 + layout.lineHeight / 2;
+  let y = safeTop + maxHeight / 2 - layout.totalHeight / 2 + layout.lineHeight / 2;
   layout.wrappedLines.forEach((line) => {
     context.fillText(line, width / 2, y);
     y += layout.lineHeight + layout.fontSize * 0.18;
@@ -3969,14 +4002,26 @@ function isMobileLayout() {
   return window.matchMedia("(max-width: 760px)").matches;
 }
 
+function isTabletPortraitLayout() {
+  return window.matchMedia("(min-width: 761px) and (max-width: 1100px) and (orientation: portrait)").matches;
+}
+
+function isLibraryDrawerLayout() {
+  return isMobileLayout() || isTabletPortraitLayout();
+}
+
+function isTouchReorderLayout() {
+  return window.matchMedia("(max-width: 1100px)").matches;
+}
+
 function setMobileLibraryExpanded(expanded) {
-  mobileLibraryExpanded = Boolean(expanded) && isMobileLayout();
+  mobileLibraryExpanded = Boolean(expanded) && isLibraryDrawerLayout();
   els.bankPanel?.style.removeProperty("--mobile-library-height");
   els.bankPanel?.classList.toggle("mobile-expanded", mobileLibraryExpanded);
 }
 
 function setMobileLibraryState(stateName) {
-  if (!isMobileLayout()) return;
+  if (!isLibraryDrawerLayout()) return;
   const nextState = ["minimized", "middle", "full"].includes(stateName) ? stateName : "middle";
   mobileLibraryState = nextState;
   mobileLibraryExpanded = nextState === "full";
@@ -3996,13 +4041,13 @@ function setMobileLibraryState(stateName) {
 }
 
 function openMobileLibraryDrawer(expand = false) {
-  if (!isMobileLayout()) return;
+  if (!isLibraryDrawerLayout()) return;
   setSidePanelMode("library");
   setMobileLibraryState(expand ? "full" : "middle");
 }
 
 function closeMobileLibraryDrawer() {
-  if (isMobileLayout()) {
+  if (isLibraryDrawerLayout()) {
     setMobileLibraryState("minimized");
     return;
   }
@@ -6475,6 +6520,7 @@ function bindEvents() {
   els.accountForm?.addEventListener("submit", signInFromAccountDialog);
   els.accountSignInModeButton?.addEventListener("click", () => setAccountMode("sign-in"));
   els.accountSignUpModeButton?.addEventListener("click", () => setAccountMode("sign-up"));
+  els.accountPasswordToggle?.addEventListener("click", toggleAccountPasswordVisibility);
   els.accountUseCase?.addEventListener("change", updateAccountUseCaseFields);
   els.accountProfileUseCase?.addEventListener("change", updateAccountProfileUseCaseFields);
   els.accountRefreshProfileButton?.addEventListener("click", loadAccountProfileFromCloud);
@@ -6644,6 +6690,9 @@ function bindEvents() {
   els.slidesFontDownButton?.addEventListener("click", () => changeSlidesEditorFont(-4));
   els.slidesFontUpButton?.addEventListener("click", () => changeSlidesEditorFont(4));
   els.slidesFitScreenButton?.addEventListener("click", fitSlidesEditorFontToScreen);
+  window.addEventListener("resize", () => {
+    if (els.slidesEditorDialog?.open && activeSlidesDraft.length) renderSlidesEditor(true);
+  }, { passive: true });
   els.slidesCurrentText?.addEventListener("input", updateCurrentSlideText);
   els.slidesEditorList?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-slide-index]");
@@ -7014,10 +7063,10 @@ function bindPointerDragFallback() {
   document.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     const mobile = isMobileLayout();
+    const touchReorder = isTouchReorderLayout();
     const bankRow = event.target.closest?.(".bank-song");
     const lineupRow = event.target.closest?.(".lineup-row");
     const mobileDragHandle = mobile ? event.target.closest?.(".lineup-row .drag-handle") : null;
-    if (mobile && lineupRow && !mobileDragHandle) return;
     if (mobile && !lineupRow && !bankRow) return;
     const blockedControl = event.target.closest?.("input, select, textarea, [data-close-dialog], dialog");
     if (blockedControl) return;
@@ -7033,10 +7082,10 @@ function bindPointerDragFallback() {
         row: bankRow,
         pointerId: event.pointerId,
         active: false,
-        longPressReady: !mobile,
+        longPressReady: !touchReorder,
         longPressTimer: null,
       };
-      if (mobile) {
+      if (touchReorder) {
         drag.longPressTimer = window.setTimeout(() => {
           if (!drag || drag.pointerId !== event.pointerId || drag.type !== "bank") return;
           drag.longPressReady = true;
@@ -7066,7 +7115,7 @@ function bindPointerDragFallback() {
   document.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (!drag.active && drag.type === "bank" && isMobileLayout() && !drag.longPressReady) {
+    if (!drag.active && drag.type === "bank" && isTouchReorderLayout() && !drag.longPressReady) {
       if (distance > 12) {
         if (drag.longPressTimer) window.clearTimeout(drag.longPressTimer);
         drag = null;
@@ -7163,7 +7212,7 @@ function bindMobileLibraryDrawerDrag() {
   };
 
   els.bankPanel.addEventListener("pointerdown", (event) => {
-    if (!isMobileLayout()) return;
+    if (!isLibraryDrawerLayout()) return;
     if (sidePanelMode !== "library") return;
     if (event.target.closest(".bank-song")) return;
     if (event.target.closest("button, input, select, textarea, a, summary")) return;
@@ -7204,7 +7253,7 @@ function bindMobileLibraryDrawerDrag() {
   }, true);
 
   window.addEventListener("resize", () => {
-    if (!isMobileLayout()) setMobileLibraryExpanded(false);
+    if (!isLibraryDrawerLayout()) setMobileLibraryExpanded(false);
   });
 }
 

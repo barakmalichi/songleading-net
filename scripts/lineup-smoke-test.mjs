@@ -9,8 +9,8 @@ const indexSource = fs.readFileSync(indexPath, "utf8");
 
 assert.equal(/ on(?:click|change)=/i.test(indexSource), false, "index.html should not contain inline click/change handlers");
 assert.equal(/ on(?:click|change)=/i.test(appSource), false, "rendered templates should not contain inline click/change handlers");
-assert.match(indexSource, /app\.js\?v=169/);
-assert.match(indexSource, /styles\.css\?v=169/);
+assert.match(indexSource, /app\.js\?v=170/);
+assert.match(indexSource, /styles\.css\?v=170/);
 
 function fakeElement() {
   const element = {
