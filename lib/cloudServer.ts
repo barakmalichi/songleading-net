@@ -163,9 +163,14 @@ async function getAdminUserId() {
 }
 
 export async function readHomepageAboutContent() {
-  const content = await readHomepageContent();
-  if (isRecord(content) && isRecord(content.about)) return content.about;
-  return null;
+  if (!cloudIsConfigured()) return null;
+
+  const adminUserId = await getAdminUserId();
+  const rows = await serviceGet(
+    `/rest/v1/user_workspaces?user_id=eq.${encodeURIComponent(adminUserId)}&select=studio_data&limit=1`
+  );
+  const studioData = Array.isArray(rows) ? rows[0]?.studio_data : null;
+  return isRecord(studioData) ? studioData.homepageAboutContent ?? null : null;
 }
 
 export async function saveHomepageAboutContent(token: string, user: SupabaseUser, content: unknown) {
@@ -175,48 +180,10 @@ export async function saveHomepageAboutContent(token: string, user: SupabaseUser
 
   const current = await readWorkspace(token, user.id);
   const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
-  const currentHomepageContent = isRecord(currentStudioData.homepageContent) ? currentStudioData.homepageContent : {};
   return upsertWorkspace(token, user.id, {
     studioData: {
       ...currentStudioData,
-      homepageAboutContent: content,
-      homepageContent: {
-        ...currentHomepageContent,
-        about: content
-      }
-    }
-  });
-}
-
-export async function readHomepageContent() {
-  if (!cloudIsConfigured()) return null;
-
-  const adminUserId = await getAdminUserId();
-  const rows = await serviceGet(
-    `/rest/v1/user_workspaces?user_id=eq.${encodeURIComponent(adminUserId)}&select=studio_data&limit=1`
-  );
-  const studioData = Array.isArray(rows) ? rows[0]?.studio_data : null;
-  if (!isRecord(studioData)) return null;
-  if (isRecord(studioData.homepageContent)) return studioData.homepageContent;
-  if (isRecord(studioData.homepageAboutContent)) {
-    return { about: studioData.homepageAboutContent };
-  }
-  return null;
-}
-
-export async function saveHomepageContent(token: string, user: SupabaseUser, content: unknown) {
-  if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
-    throw new Error("This admin area is private.");
-  }
-
-  const current = await readWorkspace(token, user.id);
-  const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
-  const aboutContent = isRecord(content) && isRecord(content.about) ? content.about : currentStudioData.homepageAboutContent;
-  return upsertWorkspace(token, user.id, {
-    studioData: {
-      ...currentStudioData,
-      homepageContent: content,
-      homepageAboutContent: aboutContent
+      homepageAboutContent: content
     }
   });
 }

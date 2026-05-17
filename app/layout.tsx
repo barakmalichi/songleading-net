@@ -1,38 +1,10 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  applicationName: "Songleading.net",
-  title: "Songleading Tools and Training",
-  description: "Plan lineups, prepare lyric slides, and lead stronger musical gatherings with resources from Barak Malichi.",
-  manifest: "/site.webmanifest",
-  appleWebApp: {
-    capable: true,
-    title: "Songleading.net",
-    statusBarStyle: "black-translucent"
-  },
-  icons: {
-    icon: "/lineup/icon.svg",
-    apple: "/lineup/icon.svg"
-  }
+  title: "Songleading",
+  description: "Build show lineups, stage exports, and lyric slides in one workspace."
 };
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  themeColor: "#070b12"
-};
-
-const themeScript = `
-try {
-  var storedTheme = window.localStorage.getItem("songleading-theme");
-  var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if ((storedTheme && storedTheme === "dark") || (!storedTheme && prefersDark)) {
-    document.documentElement.dataset.siteTheme = "dark";
-  }
-} catch (error) {}
-`;
 
 export default function RootLayout({
   children
@@ -40,10 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
