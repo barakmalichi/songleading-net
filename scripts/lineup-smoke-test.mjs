@@ -9,8 +9,8 @@ const indexSource = fs.readFileSync(indexPath, "utf8");
 
 assert.equal(/ on(?:click|change)=/i.test(indexSource), false, "index.html should not contain inline click/change handlers");
 assert.equal(/ on(?:click|change)=/i.test(appSource), false, "rendered templates should not contain inline click/change handlers");
-assert.match(indexSource, /app\.js\?v=167/);
-assert.match(indexSource, /styles\.css\?v=167/);
+assert.match(indexSource, /app\.js\?v=168/);
+assert.match(indexSource, /styles\.css\?v=168/);
 
 function fakeElement() {
   const element = {
@@ -129,6 +129,12 @@ const malicious = {
     capo: "bad",
     note: "n".repeat(200),
     slidesStatus: "evil",
+  }, {
+    id: "slide<script>",
+    type: "slide",
+    title: "Slide only",
+    image: "javascript:alert(1)",
+    slidesStatus: "slides-ready",
   }],
 };
 
@@ -140,6 +146,10 @@ assert.equal(normalized.songs[0].duration, "");
 assert.equal(normalized.songs[0].credits.length, 120);
 assert.equal(normalized.songs[0].tags.length, 12);
 assert.equal(normalized.lineup[0].slidesStatus, "no-slides");
+assert.equal(normalized.lineup[1].type, "slide");
+assert.equal(normalized.lineup[1].title, "Slide only");
+assert.equal(normalized.lineup[1].image, "");
+assert.equal(normalized.lineup[1].slideSaveScope, "local");
 assert.equal(/[<>]/.test(normalized.songs[0].id), false);
 assert.equal(/[<>]/.test(normalized.lineup[0].id), false);
 assert.equal(context.__lineupSmoke.escapeHtml("<b>") === "&lt;b&gt;", true);

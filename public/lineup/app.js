@@ -18,7 +18,7 @@ const bankWidthStorageKey = "show-lineup-builder-bank-width";
 const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
 const onboardingHiddenStorageKey = "lineup-onboarding-tips-hidden:v1";
 const requireAccountForApp = true;
-const appVersion = 8;
+const appVersion = 9;
 const defaultShowName = "New Setlist";
 const importLimits = {
   shareChars: 600000,
@@ -134,6 +134,7 @@ let activeSlidesRedoStack = [];
 let restoringLineupHistory = false;
 let restoringSlidesHistory = false;
 let songDialogMode = "library";
+let pendingSlideOnlyImageLineupId = "";
 let cloudWorkspaceUpdatedAt = "";
 let cloudSyncTimer = null;
 let cloudSyncListenersBound = false;
@@ -208,6 +209,8 @@ const els = {
   quickAddButton: document.querySelector("#quickAddButton"),
   newSongButton: document.querySelector("#newSongButton"),
   oneTimeSongButton: document.querySelector("#oneTimeSongButton"),
+  addSlideOnlyButton: document.querySelector("#addSlideOnlyButton"),
+  slideOnlyImageInput: document.querySelector("#slideOnlyImageInput"),
   songDialog: document.querySelector("#songDialog"),
   songForm: document.querySelector("#songForm"),
   saveSongButton: document.querySelector("#saveSongButton"),
@@ -721,6 +724,28 @@ function normalizeLineupItem(item, songIdMap = new Map()) {
       type: "note",
       text,
     };
+  }
+
+  if (item.type === "slide") {
+    const next = {
+      id: safeId(item.id, "lineup"),
+      type: "slide",
+      title: safeText(item.title, 70, "Slide only") || "Slide only",
+      slidesStatus: safeSlideStatus(item.slidesStatus),
+      slideSongId: "",
+      slideFlowId: safeOptionalId(item.slideFlowId),
+      slideSaveScope: "local",
+      image: safeImageValue(item.image),
+      imageName: safeText(item.imageName, 90),
+    };
+
+    if (item.localSlideSong && typeof item.localSlideSong === "object") {
+      const localSlideSong = normalizeLocalSlideSong(item.localSlideSong);
+      if (localSlideSong) next.localSlideSong = localSlideSong;
+    }
+
+    if (next.image && next.slidesStatus === "no-slides") next.slidesStatus = "slides-ready";
+    return next;
   }
 
   const next = {
@@ -1522,8 +1547,6 @@ function tagString(tags) {
 
 function songMetaLabel(song) {
   const parts = [];
-  const songCategories = songCategoryNames(song);
-  if (songCategories.length) parts.push(songCategories.join(", "));
   if (song?.duration) parts.push(song.duration);
   return parts.join(" / ");
 }
@@ -1542,12 +1565,13 @@ function slidesStatusClass(status) {
 
 function slidesButtonClass(itemOrSong) {
   const status = itemOrSong?.slidesStatus || "no-slides";
-  const hasSlides = Boolean(itemOrSong?.slideSongId || itemOrSong?.slideFlowId || status === "slides-ready");
+  const hasSlides = Boolean(itemOrSong?.image || itemOrSong?.slideSongId || itemOrSong?.slideFlowId || status === "slides-ready");
   if (status === "needs-review") return "review";
   return hasSlides ? "ready" : "empty";
 }
 
 function slidesButtonTitle(itemOrSong) {
+  if (itemOrSong?.image) return "Full-screen picture slide";
   const status = itemOrSong?.slidesStatus || "no-slides";
   if (status === "slides-ready") return "Slides ready";
   if (status === "needs-review") return "Slides need review";
@@ -1675,6 +1699,26 @@ function localSlideSongForLineupItem(item) {
     : null;
 }
 
+function slideOnlySongForItem(item) {
+  return {
+    id: `slide-only-${item?.id || makeId("slide")}`,
+    title: item?.title || "Slide only",
+    category: "",
+    categories: [],
+    key: "C",
+    capo: "",
+    duration: "",
+    banger: false,
+    hebrew: false,
+    credits: "",
+    tags: [],
+    notes: "",
+    slideSongId: "",
+    slideFlowId: item?.slideFlowId || "",
+    slidesStatus: item?.image ? "slides-ready" : safeSlideStatus(item?.slidesStatus),
+  };
+}
+
 function findGlobalSlideSongForLineupItem(item, song, studioSongs) {
   const linkedId = item?.slideSongId || song?.slideSongId || "";
   if (linkedId) {
@@ -1690,12 +1734,12 @@ function findSlideSongForLineupItem(item, song, studioSongs) {
 
 function slidesContextForLineup(lineupId) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
-  if (!item || item.type !== "song") return null;
-  const song = songForLineupItem(item);
+  if (!item || !["song", "slide"].includes(item.type)) return null;
+  const song = item.type === "slide" ? slideOnlySongForItem(item) : songForLineupItem(item);
   if (!song) return null;
   const studioData = loadStudioData();
-  const scope = item.slideSaveScope === "local" ? "local" : "global";
-  const globalSlideSong = findGlobalSlideSongForLineupItem(item, song, studioData.songs);
+  const scope = item.type === "slide" ? "local" : item.slideSaveScope === "local" ? "local" : "global";
+  const globalSlideSong = item.type === "slide" ? null : findGlobalSlideSongForLineupItem(item, song, studioData.songs);
   const localSlideSong = localSlideSongForLineupItem(item);
   const slideSong = scope === "local" ? localSlideSong : globalSlideSong;
   return { item, song, studioData, scope, slideSong, globalSlideSong, localSlideSong };
@@ -1905,11 +1949,17 @@ function closeSlidesEditor(showSavedToast = false) {
 
 function setSlidesSaveScope(scope) {
   if (!activeSlidesContext?.lineupId) return;
+  const context = slidesContextForLineup(activeSlidesContext.lineupId);
+  if (!context) return;
+  if (context.item.type === "slide") {
+    activeSlidesContext.scope = "local";
+    context.item.slideSaveScope = "local";
+    renderSlidesEditor(true);
+    return;
+  }
   const nextScope = scope === "local" ? "local" : "global";
   if (activeSlidesContext.scope === nextScope) return;
   activeSlidesContext.scope = nextScope;
-  const context = slidesContextForLineup(activeSlidesContext.lineupId);
-  if (!context) return;
   context.item.slideSaveScope = nextScope;
   syncSlidesEditorToStorage(true);
   renderSlidesEditor(true);
@@ -1966,10 +2016,15 @@ function renderSlidesEditor(preserveCurrentText = false) {
   const hasSlides = activeSlidesDraft.length > 0;
   const status = context.item.slidesStatus || "no-slides";
   const statusClass = slidesStatusClass(status);
+  const isSlideOnly = context.item.type === "slide";
 
   if (els.slidesEditorTitle) els.slidesEditorTitle.textContent = context.song.title || "Song Slides";
   if (els.slidesSetupTitle) els.slidesSetupTitle.textContent = `Create slides for "${context.song.title || "this song"}"`;
-  if (els.slidesSaveScopeSelect) els.slidesSaveScopeSelect.value = activeSlidesContext?.scope || context.scope || "global";
+  if (els.slidesSaveScopeSelect) {
+    els.slidesSaveScopeSelect.value = isSlideOnly ? "local" : activeSlidesContext?.scope || context.scope || "global";
+    els.slidesSaveScopeSelect.disabled = isSlideOnly;
+    els.slidesSaveScopeSelect.title = isSlideOnly ? "Slide-only items save with this setlist." : "";
+  }
   if (els.slidesEditorStatus) {
     els.slidesEditorStatus.textContent = slidesStatusLabel(hasSlides ? status : "no-slides");
     els.slidesEditorStatus.className = `slides-editor-status ${statusClass}`;
@@ -2455,6 +2510,45 @@ function buildLineupSlideDeck() {
       return;
     }
 
+    if (item.type === "slide") {
+      const title = item.title || "Slide only";
+      if (item.image) {
+        slides.push({
+          kind: "image",
+          title,
+          image: item.image,
+          lines: [],
+          credits: "",
+          meta: `${index + 1} · slide only`,
+        });
+      }
+
+      const slideSong = localSlideSongForLineupItem(item);
+      const slideOnlySlides = slideSong ? buildSlidesFromStudioSong(slideSong, item.slideFlowId) : [];
+      if (slideOnlySlides.length) {
+        slideOnlySlides.forEach((slide, slideIndex) => {
+          slides.push({
+            ...slide,
+            kind: "lyrics",
+            credits: "",
+            meta: `${index + 1} · slide only${slide.section ? ` · ${slide.section}` : ""}${slideOnlySlides.length > 1 ? ` · ${slideIndex + 1}/${slideOnlySlides.length}` : ""}`,
+          });
+        });
+        return;
+      }
+
+      if (!item.image) {
+        slides.push({
+          kind: "missing",
+          title,
+          lines: ["Slide only - Not on the setlist!"],
+          credits: "",
+          meta: `${index + 1} · slide only`,
+        });
+      }
+      return;
+    }
+
     const song = songForLineupItem(item);
     if (!song) return;
     const slideSong = findSlideSongForLineupItem(item, song, studioData.songs);
@@ -2520,17 +2614,21 @@ function renderSlidePreview() {
   }
 
   const slide = slides[activeSlidePreviewIndex];
-  const kind = ["note", "missing"].includes(slide.kind) ? slide.kind : "lyrics";
+  const kind = ["note", "missing", "image"].includes(slide.kind) ? slide.kind : "lyrics";
   const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
   const showTitle = Boolean(state.show.slideExportShowTitles);
   els.slidePreviewStage.innerHTML = `
-    <div class="mini-slide ${kind}${showTitle ? " has-title" : ""}">
+    <div class="mini-slide ${kind}${showTitle && kind !== "image" ? " has-title" : ""}">
       <div class="mini-slide-meta">${escapeHtml(slide.meta || "")}</div>
-      ${showTitle ? `<strong>${escapeHtml(slide.title || "Slide")}</strong>` : ""}
-      <div class="mini-slide-lines">
-        ${lines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-      </div>
-      <small>Created with LINEUP · Songleading.net</small>
+      ${kind === "image" && slide.image ? `
+        <div class="mini-slide-image" style="background-image:url(&quot;${cssUrl(slide.image)}&quot;)"></div>
+      ` : `
+        ${showTitle ? `<strong>${escapeHtml(slide.title || "Slide")}</strong>` : ""}
+        <div class="mini-slide-lines">
+          ${lines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+        </div>
+        <small>Created with LINEUP · Songleading.net</small>
+      `}
     </div>
   `;
   if (els.slidePreviewCount) els.slidePreviewCount.textContent = `${activeSlidePreviewIndex + 1} / ${total}`;
@@ -2656,24 +2754,30 @@ async function renderSlidesExportPreview() {
   const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
   const canMovePrevious = slidesExportPreviewIndex > 0;
   const canMoveNext = slidesExportPreviewIndex < previewSlides.length - 1;
-  const themeClass = `theme-${theme.image ? "image" : theme.name}`;
+  const isImageSlide = slide.kind === "image" && safeImageValue(slide.image);
+  const themeClass = isImageSlide ? "theme-image" : `theme-${theme.image ? "image" : theme.name}`;
+  const previewStyle = isImageSlide
+    ? `background-image:url("${cssUrl(slide.image)}"); background-size:cover; background-position:center;`
+    : slidesThemePreviewStyle(theme);
   setSlidesCropControlsEnabled(Boolean(theme.image));
-  els.slidesExportPreview.className = `slides-theme-preview ${themeClass}${theme.image ? " has-custom-image" : ""}`;
-  els.slidesExportPreview.setAttribute("style", slidesThemePreviewStyle(theme));
+  els.slidesExportPreview.className = `slides-theme-preview ${themeClass}${theme.image || isImageSlide ? " has-custom-image" : ""}${isImageSlide ? " is-full-image-slide" : ""}`;
+  els.slidesExportPreview.setAttribute("style", previewStyle);
   els.slidesExportPreview.innerHTML = `
-    ${options.showTitles && slide.title ? `<span class="preview-slide-title">${escapeHtml(slide.title)}</span>` : ""}
-    ${options.showCount ? `<span class="preview-slide-count-overlay">${slidesExportPreviewIndex + 1} out of ${previewSlides.length}</span>` : ""}
-    <div class="slides-theme-preview-content">
-      <div class="preview-slide-lines">
-        ${lines.slice(0, 4).map((line) => `<strong>${escapeHtml(line)}</strong>`).join("")}
+    ${isImageSlide ? "" : `
+      ${options.showTitles && slide.title ? `<span class="preview-slide-title">${escapeHtml(slide.title)}</span>` : ""}
+      ${options.showCount ? `<span class="preview-slide-count-overlay">${slidesExportPreviewIndex + 1} out of ${previewSlides.length}</span>` : ""}
+      <div class="slides-theme-preview-content">
+        <div class="preview-slide-lines">
+          ${lines.slice(0, 4).map((line) => `<strong>${escapeHtml(line)}</strong>`).join("")}
+        </div>
       </div>
-    </div>
-    ${options.showCredits && slide.credits ? `<small class="preview-slide-credits">${escapeHtml(slide.credits)}</small>` : ""}
-    <div class="preview-slide-brand" aria-hidden="true">
-      <span>Created with</span>
-      <b><i>♪</i> Songleading.net</b>
-      <em>BY BARAK MALICHI</em>
-    </div>
+      ${options.showCredits && slide.credits ? `<small class="preview-slide-credits">${escapeHtml(slide.credits)}</small>` : ""}
+      <div class="preview-slide-brand" aria-hidden="true">
+        <span>Created with</span>
+        <b><i>♪</i> Songleading.net</b>
+        <em>BY BARAK MALICHI</em>
+      </div>
+    `}
     <div class="slides-export-preview-count" aria-live="polite">${slidesExportPreviewIndex + 1} / ${previewSlides.length}</div>
     ${previewSlides.length > 1 ? `
       <div class="slides-export-preview-nav" aria-label="Slide preview navigation">
@@ -2952,6 +3056,22 @@ async function drawSlideBackground(context, width, height, theme = {}, kind = "l
   }
 }
 
+async function drawFullBleedCanvasImage(context, width, height, src) {
+  try {
+    const image = await loadImageForCanvas(src);
+    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+    const drawnWidth = image.naturalWidth * scale;
+    const drawnHeight = image.naturalHeight * scale;
+    const x = (width - drawnWidth) / 2;
+    const y = (height - drawnHeight) / 2;
+    context.fillStyle = "#05070b";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, x, y, drawnWidth, drawnHeight);
+  } catch {
+    drawPresetSlideBackground(context, width, height, defaultSlideExportTheme, "missing");
+  }
+}
+
 function slideCanvasFont(fontSize, italic = false) {
   return `${italic ? "italic " : ""}900 ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
 }
@@ -3052,7 +3172,12 @@ async function renderSlideToCanvas(slide, theme = {}, options = {}) {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  const kind = ["note", "missing"].includes(slide.kind) ? slide.kind : "lyrics";
+  const kind = ["note", "missing", "image"].includes(slide.kind) ? slide.kind : "lyrics";
+  const image = kind === "image" ? safeImageValue(slide.image) : "";
+  if (image) {
+    await drawFullBleedCanvasImage(context, width, height, image);
+    return canvas;
+  }
   const palette = slideCanvasPalette(theme, kind);
   const rawLines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
   const lines = rawLines.map((line) => String(line || "").trim()).filter(Boolean);
@@ -3638,6 +3763,7 @@ function setSidePanelMode(mode) {
   if (els.newSongButton) els.newSongButton.hidden = sidePanelMode !== "library";
   if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = sidePanelMode !== "library";
   if (els.quickAddButton) els.quickAddButton.hidden = sidePanelMode !== "library";
+  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = sidePanelMode !== "library";
   els.showsTabButton?.classList.toggle("active", sidePanelMode === "shows");
 }
 
@@ -3864,6 +3990,7 @@ function setMobileLibraryState(stateName) {
   if (els.newSongButton) els.newSongButton.hidden = false;
   if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
   if (els.quickAddButton) els.quickAddButton.hidden = false;
+  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = false;
   els.showsTabButton?.classList.remove("active");
 }
 
@@ -3888,6 +4015,7 @@ function closeMobileLibraryDrawer() {
   if (els.newSongButton) els.newSongButton.hidden = false;
   if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
   if (els.quickAddButton) els.quickAddButton.hidden = false;
+  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = false;
   els.showsTabButton?.classList.remove("active");
 }
 
@@ -4028,6 +4156,7 @@ function renderLineup() {
   els.lineupRows.innerHTML = state.lineup
     .map((item, index) => {
       if (item.type === "note") return renderNoteRow(item, index);
+      if (item.type === "slide") return renderSlideOnlyRow(item, index);
       const song = songForLineupItem(item);
       if (!song) return "";
       const category = categoryFor(songCategoryNames(song));
@@ -4047,10 +4176,7 @@ function renderLineup() {
                 <div class="song-name">${escapeHtml(song.title)}</div>
                 ${song.banger ? `<span class="lineup-title-banger" title="Banger">${flameIcon()}</span>` : ""}
               </div>
-              ${song.banger || metaLabel ? `<div class="subline">
-                ${song.banger ? `<span class="banger-mark inline" title="Banger">${flameIcon()}</span>` : ""}
-                ${metaLabel ? escapeHtml(metaLabel) : ""}
-              </div>` : ""}
+              ${metaLabel ? `<div class="subline">${escapeHtml(metaLabel)}</div>` : ""}
             </div>
           </div>
           <div class="lineup-mobile-controls">
@@ -4092,6 +4218,52 @@ function renderLineup() {
     })
     .join("");
   renderLineupHealth();
+}
+
+function renderSlideOnlyRow(item, index) {
+  const title = item.title || "Slide only";
+  const slideClass = slidesButtonClass(item);
+  const slideTitle = slidesButtonTitle(item);
+  const pictureTitle = item.image ? "Change picture" : "Add full-screen picture";
+  return `
+    <article class="lineup-row song-row slide-only-row ${draggedLineupId === item.id ? "dragging" : ""}" style="--category-color:#f3ae22" data-lineup-id="${item.id}" draggable="true">
+      <div class="drag-handle" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"/></svg>
+      </div>
+      <div class="song-number">${index + 1}</div>
+      <div class="song-title-wrap">
+        <div class="song-text">
+          <div class="song-name-line">
+            <div class="song-name">${escapeHtml(title)}</div>
+          </div>
+          <div class="subline slide-only-subline">Slide only - Not on the setlist!</div>
+        </div>
+      </div>
+      <div class="lineup-mobile-controls slide-only-controls">
+        <button class="slide-only-inline-image-button ${item.image ? "has-image" : ""}" data-action="slide-image" data-lineup-id="${item.id}" aria-label="${pictureTitle} for ${escapeHtml(title)}" title="${pictureTitle}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 15l3-3 3 3 2-2 3 3"/><circle cx="9" cy="9" r="1.2"/></svg>
+        </button>
+        <span class="slide-only-control-spacer" aria-hidden="true"></span>
+        <span class="slide-only-control-spacer" aria-hidden="true"></span>
+        <button class="slides-status-button ${slideClass}" data-action="slides" data-lineup-id="${item.id}" aria-label="Slides for ${escapeHtml(title)}: ${slideTitle}" title="${slideTitle}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
+          <span>${escapeHtml(slideTitle)}</span>
+        </button>
+        <span class="ready-toggle-placeholder" aria-hidden="true"></span>
+      </div>
+      <div class="row-icon-actions">
+        <button class="icon-action" data-action="edit-slide-title" data-lineup-id="${item.id}" aria-label="Rename ${escapeHtml(title)}" title="Rename slide">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        </button>
+        <button class="icon-action ${item.image ? "is-active" : ""}" data-action="slide-image" data-lineup-id="${item.id}" aria-label="${pictureTitle} for ${escapeHtml(title)}" title="${pictureTitle}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 15l3-3 3 3 2-2 3 3"/><circle cx="9" cy="9" r="1.2"/></svg>
+        </button>
+        <button class="icon-action danger" data-action="remove" data-lineup-id="${item.id}" aria-label="Remove ${escapeHtml(title)}" title="Remove">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+    </article>
+  `;
 }
 
 function renderNoteRow(item, index) {
@@ -4562,6 +4734,79 @@ function addSongToLineup(songId, showMessage = true, insertAt = null) {
   return lineupItem;
 }
 
+function addSlideOnlyItem() {
+  const title = safeText(window.prompt("Slide title", "Slide only") || "", 70);
+  if (!title) return;
+  recordLineupUndo();
+  const item = {
+    id: makeId("lineup"),
+    type: "slide",
+    title,
+    slidesStatus: "no-slides",
+    slideSongId: "",
+    slideFlowId: "",
+    slideSaveScope: "local",
+    image: "",
+    imageName: "",
+  };
+  state.lineup.push(item);
+  saveState();
+  renderLineup();
+  toast("Slide-only item added.");
+  openSlidesForLineup(item.id);
+}
+
+function editSlideOnlyTitle(lineupId) {
+  const item = state.lineup.find((candidate) => candidate.id === lineupId && candidate.type === "slide");
+  if (!item) return;
+  const title = safeText(window.prompt("Slide title", item.title || "Slide only") || "", 70);
+  if (!title || title === item.title) return;
+  recordLineupUndo();
+  item.title = title;
+  if (item.localSlideSong) item.localSlideSong.title = title;
+  saveState();
+  renderLineup();
+  if (slidePreviewOpen) renderSlidePreview();
+  toast("Slide renamed.");
+}
+
+function chooseSlideOnlyImage(lineupId) {
+  const item = state.lineup.find((candidate) => candidate.id === lineupId && candidate.type === "slide");
+  if (!item || !els.slideOnlyImageInput) return;
+  pendingSlideOnlyImageLineupId = lineupId;
+  els.slideOnlyImageInput.value = "";
+  els.slideOnlyImageInput.click();
+}
+
+async function attachSlideOnlyImageFromInput() {
+  if (!pendingSlideOnlyImageLineupId) return;
+  const lineupId = pendingSlideOnlyImageLineupId;
+  pendingSlideOnlyImageLineupId = "";
+  const item = state.lineup.find((candidate) => candidate.id === lineupId && candidate.type === "slide");
+  if (!item) return;
+
+  try {
+    const rawImage = await imageInputToDataUrl(els.slideOnlyImageInput);
+    const image = safeImageValue(rawImage);
+    if (!image) {
+      toast("Use a PNG, JPG, or WebP image under 1.5 MB.");
+      return;
+    }
+    recordLineupUndo();
+    item.image = image;
+    item.imageName = safeText(els.slideOnlyImageInput?.files?.[0]?.name || "", 90);
+    item.slidesStatus = "slides-ready";
+    item.slideSaveScope = "local";
+    saveState();
+    renderLineup();
+    if (slidePreviewOpen) renderSlidePreview();
+    toast("Full-screen picture slide added.");
+  } catch (error) {
+    console.error("Slide image could not be added.", error);
+    toast("Could not add that picture.");
+  }
+}
+
 function openNoteDialog(item = null) {
   els.noteForm.reset();
   els.noteId.value = item?.id || "";
@@ -4813,31 +5058,33 @@ function setRailActive(button) {
 }
 
 function getExportItems() {
-  return state.lineup
-    .map((item, index) => {
-      if (item.type === "note") {
-        return {
-          type: "note",
-          number: index + 1,
-          title: item.text,
-          key: "",
-          capo: "",
-        };
-      }
+  const exportItems = [];
+  state.lineup.forEach((item) => {
+    if (item.type === "slide") return;
+    if (item.type === "note") {
+      exportItems.push({
+        type: "note",
+        number: exportItems.length + 1,
+        title: item.text,
+        key: "",
+        capo: "",
+      });
+      return;
+    }
 
-      const song = songForLineupItem(item);
-      if (!song) return null;
-      return {
-        type: "song",
-        number: index + 1,
-        title: song.title,
-        key: item.key || song.key,
-        capo: item.capo || "",
-        credits: song.credits || "",
-        note: item.note || "",
-      };
-    })
-    .filter(Boolean);
+    const song = songForLineupItem(item);
+    if (!song) return;
+    exportItems.push({
+      type: "song",
+      number: exportItems.length + 1,
+      title: song.title,
+      key: item.key || song.key,
+      capo: item.capo || "",
+      credits: song.credits || "",
+      note: item.note || "",
+    });
+  });
+  return exportItems;
 }
 
 function openExportPreview() {
@@ -5917,6 +6164,16 @@ function handleLineupAction(action, lineupId, songId) {
     return;
   }
 
+  if (action === "slide-image" && item?.type === "slide") {
+    chooseSlideOnlyImage(lineupId);
+    return;
+  }
+
+  if (action === "edit-slide-title" && item?.type === "slide") {
+    editSlideOnlyTitle(lineupId);
+    return;
+  }
+
   if (action === "ready" && item) {
     recordLineupUndo();
     item.ready = !item.ready;
@@ -6083,6 +6340,8 @@ function bindEvents() {
   els.newSongButton.addEventListener("click", () => openSongDialog());
   els.oneTimeSongButton?.addEventListener("click", () => openOneTimeSongDialog());
   els.quickAddButton.addEventListener("click", () => openQuickAddDialog());
+  els.addSlideOnlyButton?.addEventListener("click", addSlideOnlyItem);
+  els.slideOnlyImageInput?.addEventListener("change", attachSlideOnlyImageFromInput);
   els.addOneTimeSongButton?.addEventListener("click", addOneTimeSongFromDialog);
   els.songTitle.addEventListener("input", () => {
     if (hasHebrewLetters(els.songTitle.value)) els.songHebrew.checked = true;
@@ -6525,7 +6784,7 @@ function bindEvents() {
     const action = actionEl.dataset.action;
     const lineupId = actionEl.dataset.lineupId;
     const songId = actionEl.dataset.songId || "";
-    if (!["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides"].includes(action)) return;
+    if (!["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "edit-slide-title", "slide-image"].includes(action)) return;
     event.preventDefault();
     handleLineupAction(action, lineupId, songId);
   });
@@ -6690,6 +6949,8 @@ function bindCoreFallbackEvents() {
   bind(els.newSongButton, "click", () => openSongDialog());
   bind(els.oneTimeSongButton, "click", () => openOneTimeSongDialog());
   bind(els.quickAddButton, "click", openQuickAddDialog);
+  bind(els.addSlideOnlyButton, "click", addSlideOnlyItem);
+  bind(els.slideOnlyImageInput, "change", attachSlideOnlyImageFromInput);
   bind(els.addOneTimeSongButton, "click", addOneTimeSongFromDialog);
   bind(els.addNoteButton, "click", () => openNoteDialog());
   bind(els.toggleFiltersButton, "click", toggleLibraryFilters);
@@ -7030,6 +7291,12 @@ function bindEmergencyButtonDelegates() {
       if (control.id === "quickAddButton") {
         handled();
         openQuickAddDialog();
+        return;
+      }
+
+      if (control.id === "addSlideOnlyButton") {
+        handled();
+        addSlideOnlyItem();
         return;
       }
 
@@ -7436,7 +7703,7 @@ function bindEmergencyButtonDelegates() {
           return;
         }
 
-        if (["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides"].includes(action)) {
+        if (["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "edit-slide-title", "slide-image"].includes(action)) {
           handleLineupAction(action, lineupId, songId || "");
           return;
         }

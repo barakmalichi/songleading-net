@@ -24,7 +24,7 @@
     <link rel="manifest" href="/lineup/manifest.webmanifest?v=167" />
     <link rel="icon" href="/lineup/icon.svg?v=167" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/lineup/icon.svg?v=167" />
-    <link rel="stylesheet" href="/lineup/styles.css?v=167" />
+    <link rel="stylesheet" href="/lineup/styles.css?v=168" />
   </head>
   <body class="intro-active">
     <div id="lineupIntro" class="lineup-intro" role="status" aria-live="polite">
@@ -177,11 +177,11 @@
             <button id="newSongButton" class="icon-button" aria-label="New song" title="New song">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             </button>
-            <button id="oneTimeSongButton" class="icon-button one-time-song-button" aria-label="One-time song" title="One-time song">
-              <svg class="clock-plus-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v6l3 2"/><path d="M21 12a9 9 0 1 0-9 9"/><path d="M19 16v6M16 19h6"/></svg>
-            </button>
             <button id="quickAddButton" class="icon-button" aria-label="Quick add" title="Quick add">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M18 15v6M15 18h6"/></svg>
+            </button>
+            <button id="addSlideOnlyButton" class="icon-button" aria-label="Add slide-only item" title="Add slide-only item">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M18 8v6M15 11h6"/></svg>
             </button>
             <button class="icon-button" id="closeBankButton" aria-label="Close song bank" title="Close song bank">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -253,6 +253,8 @@
         </a>
       </aside>
     </main>
+
+    <input id="slideOnlyImageInput" type="file" accept="image/*" hidden />
 
     <dialog id="songDialog" class="song-dialog">
       <form method="dialog" id="songForm">
@@ -1070,6 +1072,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/lineup/app.js?v=167"></script>
+    <script src="/lineup/app.js?v=168"></script>
   </body>
 </html>

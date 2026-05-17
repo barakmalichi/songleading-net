@@ -1707,6 +1707,18 @@ textarea:focus {
     linear-gradient(145deg, #111820, #050607);
 }
 
+.mini-slide.image {
+  padding: 0;
+  background: #05070b;
+}
+
+.mini-slide-image {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
 .mini-slide.empty {
   color: var(--text);
   background: color-mix(in srgb, var(--panel-3) 80%, var(--panel));
@@ -2519,7 +2531,8 @@ body.is-pointer-dragging * {
 }
 
 .lineup-title-banger {
-  display: none;
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
   color: var(--amber);
 }
@@ -2666,6 +2679,64 @@ body.is-pointer-dragging * {
 
 .ready-toggle span {
   display: none;
+}
+
+.slide-only-row {
+  border-color: color-mix(in srgb, var(--amber) 34%, var(--line));
+}
+
+.slide-only-subline {
+  color: color-mix(in srgb, var(--amber) 82%, var(--soft));
+  font-weight: 820;
+}
+
+.slide-only-note {
+  display: grid;
+  align-items: center;
+  height: 32px;
+  color: var(--amber);
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.slide-only-inline-image-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.slide-only-inline-image-button.has-image {
+  border-color: rgba(91, 146, 255, 0.5);
+  color: var(--green);
+  background: rgba(91, 146, 255, 0.16);
+}
+
+.slide-only-inline-image-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.slide-only-control-spacer,
+.ready-toggle-placeholder {
+  display: block;
+  min-width: 0;
+  height: 1px;
+}
+
+.icon-action.is-active {
+  color: var(--green);
+  background: rgba(91, 146, 255, 0.12);
 }
 
 .show-panel[data-lineup-mode="build"] .drag-handle {
@@ -4083,6 +4154,11 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
 .slides-theme-preview.has-custom-image::after {
   background: linear-gradient(rgba(3, 7, 18, 0.42), rgba(3, 7, 18, 0.58));
+}
+
+.slides-theme-preview.is-full-image-slide::before,
+.slides-theme-preview.is-full-image-slide::after {
+  display: none;
 }
 
 .slides-theme-preview-content {
@@ -5983,6 +6059,13 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
     display: none;
   }
 
+  .lineup-row.slide-only-row .subline {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
   .mobile-row-status {
     display: inline-flex;
     flex: 0 0 auto;
@@ -6007,6 +6090,13 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 
   .lineup-row .slides-status-button span {
     display: none;
+  }
+
+  .slide-only-inline-image-button {
+    width: 100%;
+    height: 28px;
+    min-height: 28px;
+    border-radius: 9px;
   }
 
   .lineup-row .ready-toggle {
