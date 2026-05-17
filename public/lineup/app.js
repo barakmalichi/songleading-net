@@ -1,7 +1,6 @@
 const categories = [
   { name: "Services", color: "#5b92ff" },
   { name: "Song Session", color: "#7c8cff" },
-  { name: "Other", color: "#a5adb2" },
 ];
 
 const majorKeys = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
@@ -10,6 +9,7 @@ const keys = [...majorKeys, ...minorKeys];
 const capoOptions = ["", "Capo 1", "Capo 2", "Capo 3", "Capo 4", "Capo 5", "Capo 6", "Capo 7"];
 const storageKey = "show-lineup-builder-state";
 const cloudAuthStorageKey = "songleading-auth-session:v1";
+const cloudSyncMetaStorageKey = "songleading-cloud-sync-meta:v1";
 const guestSessionStorageKey = "songleading-guest-session:v1";
 const studioStorageKey = "lyric-slide-studio:v1";
 const themeStorageKey = "show-lineup-builder-theme";
@@ -18,14 +18,92 @@ const bankWidthStorageKey = "show-lineup-builder-bank-width";
 const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
 const onboardingHiddenStorageKey = "lineup-onboarding-tips-hidden:v1";
 const requireAccountForApp = true;
-const appVersion = 7;
+const appVersion = 8;
 const defaultShowName = "New Setlist";
+const importLimits = {
+  shareChars: 600000,
+  lineupBytes: 2 * 1024 * 1024,
+  backupBytes: 8 * 1024 * 1024,
+  songs: 1200,
+  shows: 300,
+  lineupItems: 400,
+  folders: 100,
+  tags: 12,
+  slides: 180,
+  slideLines: 1200,
+  slideLineBreaks: 300,
+};
+const safeIdPattern = /^[A-Za-z0-9:_-]{1,96}$/;
+const slideStatusValues = new Set(["no-slides", "needs-review", "slides-ready"]);
+const defaultSlideDesign = { theme: "default", fontSize: 56 };
+const defaultSlideExportTheme = { name: "default", image: "", presetName: "", crop: { x: 50, y: 50, zoom: 100 } };
+const pptxMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const slideThemeOptions = [
+  { id: "default", label: "Dark" },
+  { id: "warm", label: "Warm" },
+  { id: "bright", label: "Bright" },
+];
+
+function sanitizeSlideExportCrop(crop = {}) {
+  const x = Number.isFinite(Number(crop.x)) ? clampNumber(Number(crop.x), 0, 100) : 50;
+  const y = Number.isFinite(Number(crop.y)) ? clampNumber(Number(crop.y), 0, 100) : 50;
+  const zoom = Number.isFinite(Number(crop.zoom)) ? clampNumber(Number(crop.zoom), 100, 180) : 100;
+  return {
+    x,
+    y,
+    zoom,
+  };
+}
+
+function normalizeSlideExportTheme(theme = {}) {
+  const name = ["default", "shabbat", "campfire", "bright"].includes(theme?.name) ? theme.name : defaultSlideExportTheme.name;
+  return {
+    name,
+    image: safeImageValue(theme?.image),
+    presetName: safeText(theme?.presetName, 80),
+    crop: sanitizeSlideExportCrop(theme?.crop),
+  };
+}
+
+function cssUrl(value = "") {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
+}
+
+function fullCapoLabel(value) {
+  return value || "-";
+}
+
+function compactCapoLabel(value) {
+  const match = /(\d+)/.exec(value || "");
+  return match ? `Cp${match[1]}` : "-";
+}
+
+function renderCapoOptions(selectedValue = "", compactSelected = false) {
+  return capoOptions.map((option) => {
+    const label = compactSelected && option === selectedValue ? compactCapoLabel(option) : fullCapoLabel(option);
+    return `<option value="${option}" ${option === selectedValue ? "selected" : ""}>${label}</option>`;
+  }).join("");
+}
+
+function setCapoSelectLabels(select, compactSelected = false) {
+  if (!select) return;
+  Array.from(select.options || []).forEach((option) => {
+    option.textContent = compactSelected && option.selected ? compactCapoLabel(option.value) : fullCapoLabel(option.value);
+  });
+}
+
+function refreshCapoSelectLabels() {
+  document.querySelectorAll(".capo-select").forEach((select) => {
+    setCapoSelectLabels(select, isMobileLayout() && document.activeElement !== select);
+  });
+}
 
 let importedSharedLineup = false;
 let state = safeLoadState();
 let activeCategories = new Set();
 let bangersOnly = false;
 let hebrewOnly = false;
+let libraryFiltersOpen = false;
 let searchTerm = "";
 let sortAsc = true;
 let openRowId = null;
@@ -41,6 +119,28 @@ let authGateActive = false;
 let cloudWorkspaceLoadedForSession = false;
 let mobileLibraryExpanded = false;
 let mobileLibraryState = "middle";
+let selectedSetlistIds = new Set();
+let activeSetlistFolderId = "";
+let activeSlidesContext = null;
+let activeSlidesDraft = [];
+let activeSlidesIndex = 0;
+let activeSlidesDesign = { ...defaultSlideDesign };
+let slidesExportPendingImage = "";
+let slidesExportPreviewIndex = 0;
+let lineupUndoStack = [];
+let lineupRedoStack = [];
+let activeSlidesUndoStack = [];
+let activeSlidesRedoStack = [];
+let restoringLineupHistory = false;
+let restoringSlidesHistory = false;
+let songDialogMode = "library";
+let cloudWorkspaceUpdatedAt = "";
+let cloudSyncTimer = null;
+let cloudSyncListenersBound = false;
+let cloudSaveInFlight = false;
+let cloudPullInFlight = false;
+let localChangeRevision = 0;
+let lastCloudSavedRevision = 0;
 
 const els = {
   lineupIntro: document.querySelector("#lineupIntro"),
@@ -54,6 +154,7 @@ const els = {
   savedShowsList: document.querySelector("#savedShowsList"),
   savedShowsCurrent: document.querySelector("#savedShowsCurrent"),
   showsTabButton: document.querySelector("#showsTabButton"),
+  openLineupFileMenuButton: document.querySelector("#openLineupFileMenuButton"),
   sidePanelTitle: document.querySelector("#sidePanelTitle"),
   libraryView: document.querySelector("#libraryView"),
   showsView: document.querySelector("#showsView"),
@@ -61,8 +162,16 @@ const els = {
   newShowButton: document.querySelector("#newShowButton"),
   duplicateShowButton: document.querySelector("#duplicateShowButton"),
   deleteShowButton: document.querySelector("#deleteShowButton"),
+  showsBackButton: document.querySelector("#showsBackButton"),
+  openLineupFileSetlistsButton: document.querySelector("#openLineupFileSetlistsButton"),
+  newSetlistFolderButton: document.querySelector("#newSetlistFolderButton"),
+  setlistFolderFilters: document.querySelector("#setlistFolderFilters"),
+  moveSetlistsFolder: document.querySelector("#moveSetlistsFolder"),
+  lineupHealthBar: document.querySelector("#lineupHealthBar"),
+  lineupNextSteps: document.querySelector("#lineupNextSteps"),
   lineupRows: document.querySelector("#lineupRows"),
   addNoteButton: document.querySelector("#addNoteButton"),
+  toggleFiltersButton: document.querySelector("#toggleFiltersButton"),
   saveLineupButton: document.querySelector("#saveLineupButton"),
   renameShowButton: document.querySelector("#renameShowButton"),
   exportButton: document.querySelector("#exportButton"),
@@ -79,6 +188,7 @@ const els = {
   settingsMenuButton: document.querySelector("#settingsMenuButton"),
   accountMenuButton: document.querySelector("#accountMenuButton"),
   setlistStartDialog: document.querySelector("#setlistStartDialog"),
+  homeButton: document.querySelector("#homeButton"),
   startNewSetlistButton: document.querySelector("#startNewSetlistButton"),
   openExistingSetlistButton: document.querySelector("#openExistingSetlistButton"),
   coachOverlay: document.querySelector("#coachOverlay"),
@@ -97,6 +207,7 @@ const els = {
   sortButton: document.querySelector("#sortButton"),
   quickAddButton: document.querySelector("#quickAddButton"),
   newSongButton: document.querySelector("#newSongButton"),
+  oneTimeSongButton: document.querySelector("#oneTimeSongButton"),
   songDialog: document.querySelector("#songDialog"),
   songForm: document.querySelector("#songForm"),
   saveSongButton: document.querySelector("#saveSongButton"),
@@ -110,11 +221,13 @@ const els = {
   songCapo: document.querySelector("#songCapo"),
   songDuration: document.querySelector("#songDuration"),
   songHebrew: document.querySelector("#songHebrew"),
+  songBanger: document.querySelector("#songBanger"),
   songCredits: document.querySelector("#songCredits"),
   songTags: document.querySelector("#songTags"),
   songTagSuggestions: document.querySelector("#songTagSuggestions"),
   songNotes: document.querySelector("#songNotes"),
   deleteSongButton: document.querySelector("#deleteSongButton"),
+  addOneTimeSongButton: document.querySelector("#addOneTimeSongButton"),
   quickAddDialog: document.querySelector("#quickAddDialog"),
   quickAddForm: document.querySelector("#quickAddForm"),
   quickAddText: document.querySelector("#quickAddText"),
@@ -205,10 +318,51 @@ const els = {
   slidesExportDialog: document.querySelector("#slidesExportDialog"),
   slidesExportForm: document.querySelector("#slidesExportForm"),
   slidesExportImage: document.querySelector("#slidesExportImage"),
+  slidesExportImageZoom: document.querySelector("#slidesExportImageZoom"),
+  slidesExportImageX: document.querySelector("#slidesExportImageX"),
+  slidesExportImageY: document.querySelector("#slidesExportImageY"),
   slidesExportPreview: document.querySelector("#slidesExportPreview"),
+  slidesShowTitlesToggle: document.querySelector("#slidesShowTitlesToggle"),
+  slidesShowCreditsToggle: document.querySelector("#slidesShowCreditsToggle"),
+  slidesShowCountToggle: document.querySelector("#slidesShowCountToggle"),
   slidesExportPresetSelect: document.querySelector("#slidesExportPresetSelect"),
   saveSlidesPresetButton: document.querySelector("#saveSlidesPresetButton"),
   deleteSlidesPresetButton: document.querySelector("#deleteSlidesPresetButton"),
+  clearSlidesImageButton: document.querySelector("#clearSlidesImageButton"),
+  slidesEditorDialog: document.querySelector("#slidesEditorDialog"),
+  slidesEditorBackButton: document.querySelector("#slidesEditorBackButton"),
+  slidesEditorTitle: document.querySelector("#slidesEditorTitle"),
+  slidesEditorStatus: document.querySelector("#slidesEditorStatus"),
+  slidesSaveScopeSelect: document.querySelector("#slidesSaveScopeSelect"),
+  slidesSetupView: document.querySelector("#slidesSetupView"),
+  slidesWorkspaceView: document.querySelector("#slidesWorkspaceView"),
+  slidesSetupTitle: document.querySelector("#slidesSetupTitle"),
+  slidesFullLyrics: document.querySelector("#slidesFullLyrics"),
+  slidesUseSongNotesButton: document.querySelector("#slidesUseSongNotesButton"),
+  slidesCreateButton: document.querySelector("#slidesCreateButton"),
+  slidesEditorPreviewButton: document.querySelector("#slidesEditorPreviewButton"),
+  slidesEditorReadyButton: document.querySelector("#slidesEditorReadyButton"),
+  slidesEditorList: document.querySelector("#slidesEditorList"),
+  slidesLivePreview: document.querySelector("#slidesLivePreview"),
+  slidesCurrentLabel: document.querySelector("#slidesCurrentLabel"),
+  slidesCurrentText: document.querySelector("#slidesCurrentText"),
+  slidesAddSlideButton: document.querySelector("#slidesAddSlideButton"),
+  slidesUndoButton: document.querySelector("#slidesUndoButton"),
+  slidesRedoButton: document.querySelector("#slidesRedoButton"),
+  slidesMoveUpButton: document.querySelector("#slidesMoveUpButton"),
+  slidesMoveDownButton: document.querySelector("#slidesMoveDownButton"),
+  slidesDuplicateButton: document.querySelector("#slidesDuplicateButton"),
+  slidesSplitButton: document.querySelector("#slidesSplitButton"),
+  slidesSentencePreviousButton: document.querySelector("#slidesSentencePreviousButton"),
+  slidesSentenceNextButton: document.querySelector("#slidesSentenceNextButton"),
+  slidesJoinPreviousButton: document.querySelector("#slidesJoinPreviousButton"),
+  slidesJoinNextButton: document.querySelector("#slidesJoinNextButton"),
+  slidesDeleteButton: document.querySelector("#slidesDeleteButton"),
+  slidesFontDownButton: document.querySelector("#slidesFontDownButton"),
+  slidesFontUpButton: document.querySelector("#slidesFontUpButton"),
+  slidesFitScreenButton: document.querySelector("#slidesFitScreenButton"),
+  slidesFontSizeValue: document.querySelector("#slidesFontSizeValue"),
+  slidesThemeButtons: document.querySelector("#slidesThemeButtons"),
   shareDialog: document.querySelector("#shareDialog"),
   shareLink: document.querySelector("#shareLink"),
   copyShareButton: document.querySelector("#copyShareButton"),
@@ -224,15 +378,228 @@ const els = {
 function createEmptyState() {
   return normalizeState({
     version: appVersion,
+    setlistFolders: [],
     show: {
       name: defaultShowName,
       date: new Date().toISOString().slice(0, 10),
       notes: "",
       team: "",
+      slideExportTheme: defaultSlideExportTheme,
+      slideExportShowTitles: false,
+      slideExportShowCredits: false,
+      slideExportShowCount: false,
     },
     songs: [],
     lineup: [],
   });
+}
+
+
+function safeText(value, maxLength = 200, fallback = "") {
+  const text = String(value ?? fallback)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim();
+  return text.slice(0, maxLength);
+}
+
+function safeId(value, prefix) {
+  const text = safeText(value, 96);
+  return safeIdPattern.test(text) ? text : makeId(prefix);
+}
+
+function safeOptionalId(value) {
+  const text = safeText(value, 96);
+  return safeIdPattern.test(text) ? text : "";
+}
+
+function safeDate(value) {
+  const text = safeText(value, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : new Date().toISOString().slice(0, 10);
+}
+
+function safeDuration(value) {
+  const text = safeText(value, 8);
+  return /^[0-9]{1,2}:[0-5][0-9]$/.test(text) ? text : "";
+}
+
+function safeKey(value) {
+  return keys.includes(value) ? value : "C";
+}
+
+function safeCapo(value) {
+  return capoOptions.includes(value) ? value : "";
+}
+
+function safeArray(value, maxLength) {
+  return Array.isArray(value) ? value.slice(0, maxLength) : [];
+}
+
+function safeSlideStatus(value) {
+  return slideStatusValues.has(value) ? value : "no-slides";
+}
+
+function safeSlideSaveScope(value) {
+  return value === "local" ? "local" : "global";
+}
+
+function safeImageValue(value) {
+  const text = safeText(value, 1500000);
+  if (!text) return "";
+  if (/^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(text)) return text.replace(/\s/g, "");
+  if (/^https:\/\/[^\s"'<>]{1,1200}$/i.test(text)) return text;
+  return "";
+}
+
+function normalizeSong(song = {}, fallbackPrefix = "song") {
+  if (!song || typeof song !== "object") return null;
+  const title = safeText(song.title, 70);
+  if (!title) return null;
+  const songCategories = normalizeSongCategories(song.categories?.length ? song.categories : song.category);
+  return {
+    id: safeId(song.id, fallbackPrefix),
+    title,
+    category: songCategories[0] || "",
+    categories: songCategories,
+    key: safeKey(song.key),
+    capo: safeCapo(song.capo),
+    duration: safeDuration(song.duration),
+    banger: Boolean(song.banger),
+    hebrew: Object.prototype.hasOwnProperty.call(song, "hebrew") ? Boolean(song.hebrew) : hasHebrewLetters(title),
+    credits: safeText(song.credits, 120),
+    tags: normalizeTags(song.tags || song.tagString || ""),
+    notes: safeText(song.notes, 5000),
+    slideSongId: safeOptionalId(song.slideSongId),
+    slideFlowId: safeOptionalId(song.slideFlowId),
+    slidesStatus: safeSlideStatus(song.slidesStatus),
+  };
+}
+
+function normalizeSlideSection(section = {}) {
+  if (!section || typeof section !== "object") return null;
+  const lines = safeArray(section.lines, importLimits.slideLines)
+    .map((line) => safeText(line, 180))
+    .filter(Boolean);
+  return {
+    id: safeId(section.id, "section"),
+    name: safeText(section.name, 80, "Lyrics") || "Lyrics",
+    order: Number.isFinite(Number(section.order)) ? Math.max(0, Math.floor(Number(section.order))) : 0,
+    hidden: Boolean(section.hidden),
+    lines: lines.length ? lines : [""],
+    lineBreaksAfter: safeArray(section.lineBreaksAfter, importLimits.slideLineBreaks)
+      .map((index) => Math.max(0, Math.floor(Number(index))))
+      .filter((index) => Number.isFinite(index)),
+  };
+}
+
+function normalizeSlideFlow(flow = {}, sections = []) {
+  if (!flow || typeof flow !== "object") return null;
+  const sectionIds = new Set(sections.map((section) => section.id));
+  const selectedSectionInstances = safeArray(flow.selectedSectionInstances, importLimits.slides)
+    .map((instance) => {
+      if (!instance || typeof instance !== "object") return null;
+      const sectionId = safeOptionalId(instance.sectionId);
+      if (!sectionIds.has(sectionId)) return null;
+      return {
+        id: safeId(instance.id, "flow-section"),
+        sectionId,
+        label: safeText(instance.label, 80, "Lyrics") || "Lyrics",
+        selectedLineIndexes: safeArray(instance.selectedLineIndexes, importLimits.slideLines)
+          .map((index) => Math.max(0, Math.floor(Number(index))))
+          .filter((index) => Number.isFinite(index)),
+      };
+    })
+    .filter(Boolean);
+  return {
+    id: safeId(flow.id, "flow"),
+    name: safeText(flow.name, 80, "Default") || "Default",
+    selectedSectionInstances,
+    slideBreaks: safeArray(flow.slideBreaks, importLimits.slideLineBreaks)
+      .map((index) => Math.max(0, Math.floor(Number(index))))
+      .filter((index) => Number.isFinite(index)),
+  };
+}
+
+function normalizeLocalSlideSong(slideSong = {}) {
+  if (!slideSong || typeof slideSong !== "object") return null;
+  const title = safeText(slideSong.title, 90, "Untitled") || "Untitled";
+  const sections = safeArray(slideSong.sections, 30).map(normalizeSlideSection).filter(Boolean);
+  const safeSections = sections.length ? sections : [normalizeSlideSection({ lines: [""] })];
+  const savedFlows = safeArray(slideSong.savedFlows, 30).map((flow) => normalizeSlideFlow(flow, safeSections)).filter(Boolean);
+  return {
+    id: safeId(slideSong.id, "slide-song"),
+    title,
+    updatedAt: safeText(slideSong.updatedAt, 40),
+    design: {
+      theme: slideThemeOptions.some((option) => option.id === slideSong.design?.theme) ? slideSong.design.theme : defaultSlideDesign.theme,
+      fontSize: clampNumber(Number(slideSong.design?.fontSize) || defaultSlideDesign.fontSize, 22, 78),
+    },
+    sections: safeSections,
+    savedFlows: savedFlows.length ? savedFlows : [normalizeSlideFlow({ selectedSectionInstances: [{ sectionId: safeSections[0].id }] }, safeSections)],
+  };
+}
+
+function normalizeShowRecord(show = {}, fallbackLineup = [], songIdMap = new Map()) {
+  if (!show || typeof show !== "object") return null;
+  const rawLineup = Array.isArray(show.lineup) ? show.lineup : fallbackLineup;
+  return {
+    id: safeId(show.id || show.show?.id, "show"),
+    name: safeText(show.name || show.show?.name, 90, defaultShowName) || defaultShowName,
+    date: safeDate(show.date || show.show?.date),
+    notes: safeText(show.notes || show.show?.notes, 5000),
+    team: safeText(show.team || show.show?.team, 5000),
+    slideExportTheme: normalizeSlideExportTheme(show.slideExportTheme || show.show?.slideExportTheme || {}),
+    slideExportShowTitles: Boolean(show.slideExportShowTitles || show.show?.slideExportShowTitles),
+    slideExportShowCredits: Boolean(show.slideExportShowCredits || show.show?.slideExportShowCredits),
+    slideExportShowCount: Boolean(show.slideExportShowCount || show.show?.slideExportShowCount),
+    folderId: safeOptionalId(show.folderId),
+    draft: Boolean(show.draft),
+    lineup: safeArray(rawLineup, importLimits.lineupItems).map((item) => normalizeLineupItem(item, songIdMap)).filter(Boolean),
+  };
+}
+
+function normalizeImportedPayload(payload, expectedType = "any") {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Imported data was not a lineup file.");
+  }
+  const fileType = safeText(payload.fileType, 80);
+  if (expectedType === "lineup" && fileType && fileType !== "show-lineup-builder") {
+    throw new Error("This is not a lineup file.");
+  }
+  if (expectedType === "backup" && fileType && fileType !== "show-lineup-builder-backup") {
+    throw new Error("This is not a full backup file.");
+  }
+  return normalizeState(payload);
+}
+
+function preserveCorruptLocalState(rawValue) {
+  if (!rawValue) return;
+  try {
+    const recoveryKey = storageKey + ":recovery:" + new Date().toISOString();
+    localStorage.setItem(recoveryKey, String(rawValue).slice(0, importLimits.backupBytes));
+  } catch {}
+}
+
+function readImportedJsonFile(file, maxBytes, callback) {
+  if (!file) return;
+  if (file.size && file.size > maxBytes) {
+    toast("That file is too large to open safely.");
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const text = String(reader.result || "");
+    if (text.length > maxBytes) {
+      toast("That file is too large to open safely.");
+      return;
+    }
+    try {
+      callback(JSON.parse(text));
+    } catch {
+      toast("That file is not valid lineup JSON.");
+    }
+  });
+  reader.addEventListener("error", () => toast("That file could not be read."));
+  reader.readAsText(file);
 }
 
 function safeLoadState() {
@@ -241,6 +608,8 @@ function safeLoadState() {
   } catch (error) {
     console.error("Saved lineup data could not be loaded.", error);
     try {
+      const saved = localStorage.getItem(storageKey);
+      preserveCorruptLocalState(saved);
       localStorage.removeItem(storageKey);
     } catch {}
     return createEmptyState();
@@ -251,7 +620,7 @@ function loadState() {
   const shared = getSharedStateFromHash();
   if (shared) {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(shared));
+      localStorage.setItem(storageKey, JSON.stringify(storageStateFrom(shared)));
     } catch {}
     return shared;
   }
@@ -265,12 +634,13 @@ function loadState() {
 
   if (saved) {
     try {
+      if (saved.length > importLimits.backupBytes) throw new Error("Saved data was too large.");
       const parsed = JSON.parse(saved);
-      if (!parsed || typeof parsed !== "object") throw new Error("Saved data was empty.");
-      return normalizeState(parsed);
+      return normalizeImportedPayload(parsed);
     } catch (error) {
       console.error("Saved lineup data was reset.", error);
       try {
+        preserveCorruptLocalState(saved);
         localStorage.removeItem(storageKey);
       } catch {}
     }
@@ -280,45 +650,50 @@ function loadState() {
 }
 
 function normalizeState(parsed) {
-  parsed = parsed && typeof parsed === "object" ? parsed : {};
-  const fallbackShow = parsed.show || {
-    name: defaultShowName,
-    date: new Date().toISOString().slice(0, 10),
-    notes: "",
-    team: "",
-  };
-  const songs = Array.isArray(parsed.songs)
-    ? parsed.songs.map((song) => ({
-        ...song,
-        category: normalizeCategoryName(song.category),
-        banger: Boolean(song.banger),
-        hebrew: Object.prototype.hasOwnProperty.call(song, "hebrew") ? Boolean(song.hebrew) : hasHebrewLetters(song.title),
-        tags: normalizeTags(song.tags || song.tagString || ""),
-      }))
-    : [];
-  const legacyLineup = Array.isArray(parsed.lineup)
-    ? parsed.lineup.map(normalizeLineupItem)
-    : [];
-  const shows = Array.isArray(parsed.shows) && parsed.shows.length
-    ? parsed.shows.map((show) => ({
-        id: show.id || makeId("show"),
-        name: show.name || show.show?.name || defaultShowName,
-        date: show.date || show.show?.date || new Date().toISOString().slice(0, 10),
-        notes: show.notes || show.show?.notes || "",
-        team: show.team || show.show?.team || "",
-        draft: Boolean(show.draft),
-        lineup: Array.isArray(show.lineup)
-          ? show.lineup.map(normalizeLineupItem)
-          : [],
-      }))
-    : [{
-        id: parsed.activeShowId || makeId("show"),
-        name: fallbackShow.name || defaultShowName,
-        date: fallbackShow.date || new Date().toISOString().slice(0, 10),
-        notes: fallbackShow.notes || "",
-        team: fallbackShow.team || "",
+  parsed = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  const fallbackShow = parsed.show && typeof parsed.show === "object"
+    ? parsed.show
+    : {
+        name: defaultShowName,
+        date: new Date().toISOString().slice(0, 10),
+        notes: "",
+        team: "",
+      };
+  const songIdMap = new Map();
+  const songs = safeArray(parsed.songs, importLimits.songs)
+    .map((song) => {
+      const normalized = normalizeSong(song);
+      if (normalized && song && typeof song === "object") songIdMap.set(String(song.id || ""), normalized.id);
+      return normalized;
+    })
+    .filter(Boolean);
+  const legacyLineup = safeArray(parsed.lineup, importLimits.lineupItems).map((item) => normalizeLineupItem(item, songIdMap)).filter(Boolean);
+  const shows = safeArray(parsed.shows, importLimits.shows).length
+    ? safeArray(parsed.shows, importLimits.shows).map((show) => normalizeShowRecord(show, [], songIdMap)).filter(Boolean)
+    : [normalizeShowRecord({
+        id: parsed.activeShowId,
+        name: fallbackShow.name,
+        date: fallbackShow.date,
+        notes: fallbackShow.notes,
+        team: fallbackShow.team,
+        slideExportTheme: fallbackShow.slideExportTheme,
+        slideExportShowTitles: fallbackShow.slideExportShowTitles,
+        slideExportShowCredits: fallbackShow.slideExportShowCredits,
+        slideExportShowCount: fallbackShow.slideExportShowCount,
         lineup: legacyLineup,
-      }];
+      }, [], songIdMap)].filter(Boolean);
+  if (!shows.length) {
+    shows.push(normalizeShowRecord({ name: defaultShowName, lineup: [] }, [], songIdMap));
+  }
+  const setlistFolders = safeArray(parsed.setlistFolders, importLimits.folders)
+    .map((folder) => {
+      if (!folder || typeof folder !== "object") return null;
+      return {
+        id: safeId(folder.id, "folder"),
+        name: safeText(folder.name, 80, "Folder") || "Folder",
+      };
+    })
+    .filter(Boolean);
 
   const activeShowId = shows.some((show) => show.id === parsed.activeShowId)
     ? parsed.activeShowId
@@ -328,21 +703,82 @@ function normalizeState(parsed) {
   return {
     version: appVersion,
     activeShowId,
+    setlistFolders,
     shows,
-    show: { name: activeShow.name, date: activeShow.date, notes: activeShow.notes || "", team: activeShow.team || "" },
+    show: showStateFromShow(activeShow),
     songs,
     lineup: activeShow.lineup,
   };
 }
 
-function normalizeLineupItem(item) {
-  const next = item?.type ? { ...item } : { ...item, type: "song" };
-  if (next.type === "song") {
-    next.slidesStatus = next.slidesStatus || "no-slides";
-    next.slideSongId = next.slideSongId || "";
-    next.slideFlowId = next.slideFlowId || "";
+function normalizeLineupItem(item, songIdMap = new Map()) {
+  if (!item || typeof item !== "object") return null;
+  if (item.type === "note") {
+    const text = safeText(item.text, 500);
+    if (!text) return null;
+    return {
+      id: safeId(item.id, "lineup"),
+      type: "note",
+      text,
+    };
   }
+
+  const next = {
+    id: safeId(item.id, "lineup"),
+    type: "song",
+    songId: songIdMap.get(String(item.songId || "")) || safeOptionalId(item.songId),
+    capo: safeCapo(item.capo),
+    key: safeKey(item.key),
+    ready: Boolean(item.ready),
+    note: safeText(item.note, 80),
+    slidesStatus: safeSlideStatus(item.slidesStatus),
+    slideSongId: safeOptionalId(item.slideSongId),
+    slideFlowId: safeOptionalId(item.slideFlowId),
+    slideSaveScope: safeSlideSaveScope(item.slideSaveScope),
+  };
+
+  if (!next.songId && item.oneTimeSong && typeof item.oneTimeSong === "object") {
+    next.oneTimeSong = normalizeOneTimeSong(item.oneTimeSong);
+    next.slideSaveScope = "local";
+  }
+
+  if (item.localSlideSong && typeof item.localSlideSong === "object") {
+    const localSlideSong = normalizeLocalSlideSong(item.localSlideSong);
+    if (localSlideSong) next.localSlideSong = localSlideSong;
+  }
+
+  if (!next.songId && !next.oneTimeSong) return null;
   return next;
+}
+
+function normalizeOneTimeSong(song = {}) {
+  const normalized = normalizeSong(song, "once");
+  return {
+    ...(normalized || {
+      id: makeId("once"),
+      title: "One-time song",
+      category: "",
+      categories: [],
+      key: "C",
+      capo: "",
+      duration: "",
+      banger: false,
+      hebrew: false,
+      credits: "",
+      tags: [],
+      notes: "",
+      slidesStatus: "no-slides",
+      slideSongId: "",
+      slideFlowId: "",
+    }),
+    oneTime: true,
+  };
+}
+
+function songForLineupItem(item) {
+  if (!item || item.type !== "song") return null;
+  if (item.songId) return state.songs.find((candidate) => candidate.id === item.songId) || null;
+  return item.oneTimeSong ? normalizeOneTimeSong(item.oneTimeSong) : null;
 }
 
 function getSharedStateFromHash() {
@@ -350,11 +786,13 @@ function getSharedStateFromHash() {
   if (!match) return null;
 
   try {
+    if (match[1].length > importLimits.shareChars) throw new Error("Shared lineup link was too large.");
     const parsed = JSON.parse(decodeShareData(match[1]));
-    const shared = normalizeState(parsed);
+    const shared = normalizeImportedPayload(parsed, "lineup");
     importedSharedLineup = true;
     return shared;
-  } catch {
+  } catch (error) {
+    console.warn("Shared lineup link could not be opened.", error);
     return null;
   }
 }
@@ -362,13 +800,63 @@ function getSharedStateFromHash() {
 function saveState() {
   syncActiveShowFromFields();
   const current = activeShow();
+  const currentWasUnchangedDraft = Boolean(current?.draft && isUnchangedDraftShow(current));
   if (current?.draft && !isUnchangedDraftShow(current)) current.draft = false;
   try {
     localStorage.setItem(storageKey, JSON.stringify(storageState()));
   } catch (error) {
     console.warn("Lineup could not be stored locally.", error);
   }
-  queueLineupCloudSave();
+  localChangeRevision += 1;
+  if (!currentWasUnchangedDraft) queueLineupCloudSave();
+}
+
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function pushHistorySnapshot(stack, snapshot) {
+  const serialized = JSON.stringify(snapshot);
+  if (stack.length && JSON.stringify(stack[stack.length - 1]) === serialized) return;
+  stack.push(snapshot);
+  if (stack.length > 80) stack.shift();
+}
+
+function recordLineupUndo() {
+  if (restoringLineupHistory) return;
+  syncActiveShowFromFields();
+  pushHistorySnapshot(lineupUndoStack, cloneData(state));
+  lineupRedoStack = [];
+}
+
+function restoreLineupSnapshot(snapshot) {
+  restoringLineupHistory = true;
+  state = normalizeState(cloneData(snapshot));
+  saveState();
+  render();
+  restoringLineupHistory = false;
+}
+
+function undoLineup() {
+  if (!lineupUndoStack.length) {
+    toast("Nothing to undo.");
+    return;
+  }
+  syncActiveShowFromFields();
+  lineupRedoStack.push(cloneData(state));
+  restoreLineupSnapshot(lineupUndoStack.pop());
+  toast("Undone.");
+}
+
+function redoLineup() {
+  if (!lineupRedoStack.length) {
+    toast("Nothing to redo.");
+    return;
+  }
+  syncActiveShowFromFields();
+  lineupUndoStack.push(cloneData(state));
+  restoreLineupSnapshot(lineupRedoStack.pop());
+  toast("Redone.");
 }
 
 function getCloudSession() {
@@ -387,11 +875,47 @@ function setCloudSession(session) {
     if (!session) {
       localStorage.removeItem(cloudAuthStorageKey);
       cloudWorkspaceLoadedForSession = false;
+      stopCloudSyncLoop();
       return;
     }
     setGuestSession(false);
     localStorage.setItem(cloudAuthStorageKey, JSON.stringify(session));
+    startCloudSyncLoop();
   } catch {}
+}
+
+function workspaceTimestampFromResponse(workspace) {
+  return workspace?.updatedAt || workspace?.workspace?.updated_at || workspace?.workspace?.updatedAt || "";
+}
+
+function rememberCloudWorkspaceTimestamp(workspaceOrTimestamp) {
+  const updatedAt = typeof workspaceOrTimestamp === "string" ? workspaceOrTimestamp : workspaceTimestampFromResponse(workspaceOrTimestamp);
+  if (!updatedAt) return;
+  const current = restoreCloudWorkspaceTimestamp();
+  if (current && Date.parse(updatedAt) < Date.parse(current)) return;
+  cloudWorkspaceUpdatedAt = updatedAt;
+  try {
+    localStorage.setItem(cloudSyncMetaStorageKey, JSON.stringify({ updatedAt }));
+  } catch {}
+}
+
+function restoreCloudWorkspaceTimestamp() {
+  if (cloudWorkspaceUpdatedAt) return cloudWorkspaceUpdatedAt;
+  try {
+    const raw = localStorage.getItem(cloudSyncMetaStorageKey);
+    const parsed = raw ? JSON.parse(raw) : null;
+    cloudWorkspaceUpdatedAt = parsed?.updatedAt || "";
+  } catch {
+    cloudWorkspaceUpdatedAt = "";
+  }
+  return cloudWorkspaceUpdatedAt;
+}
+
+function isRemoteWorkspaceNewer(updatedAt) {
+  if (!updatedAt) return false;
+  const current = restoreCloudWorkspaceTimestamp();
+  if (!current) return true;
+  return Date.parse(updatedAt) > Date.parse(current) + 250;
 }
 
 function normalizeAccountProfile(metadata = {}) {
@@ -504,19 +1028,28 @@ async function saveCurrentWorkspaceToCloud() {
   } catch {
     studioData = undefined;
   }
-  return cloudRequest("/api/workspace", {
+  cloudSaveInFlight = true;
+  try {
+    const result = await cloudRequest("/api/workspace", {
     method: "POST",
     headers: { authorization: `Bearer ${session.access_token}` },
     body: JSON.stringify({ lineupState: storageState(), studioData }),
-  });
+    });
+    rememberCloudWorkspaceTimestamp(result);
+    lastCloudSavedRevision = localChangeRevision;
+    return result;
+  } finally {
+    cloudSaveInFlight = false;
+  }
 }
 
-async function loadCloudWorkspaceToDevice() {
+async function loadCloudWorkspaceToDevice(options = {}) {
   const session = await getValidCloudSession();
   if (!session) throw new Error("Please sign in first.");
   const workspace = await cloudRequest("/api/workspace", {
     headers: { authorization: `Bearer ${session.access_token}` },
   });
+  rememberCloudWorkspaceTimestamp(workspace);
   if (workspace.lineupState) {
     state = normalizeState(workspace.lineupState);
     localStorage.setItem(storageKey, JSON.stringify(state));
@@ -525,6 +1058,8 @@ async function loadCloudWorkspaceToDevice() {
     localStorage.setItem(studioStorageKey, JSON.stringify(workspace.studioData));
   }
   render();
+  lastCloudSavedRevision = localChangeRevision;
+  if (options.toastMessage) toast(options.toastMessage);
   return workspace;
 }
 
@@ -552,6 +1087,60 @@ function queueLineupCloudSave() {
       console.warn("Lineup cloud sync failed.", error);
     });
   }, 900);
+}
+
+async function refreshCloudWorkspaceIfNewer(options = {}) {
+  if (!getCloudSession() || cloudPullInFlight || cloudSaveInFlight || lineupCloudTimer) return false;
+  cloudPullInFlight = true;
+  try {
+    const session = await getValidCloudSession();
+    if (!session) return false;
+    const workspace = await cloudRequest("/api/workspace", {
+      headers: { authorization: `Bearer ${session.access_token}` },
+    });
+    const updatedAt = workspaceTimestampFromResponse(workspace);
+    if (!workspace.lineupState || !isRemoteWorkspaceNewer(updatedAt)) {
+      rememberCloudWorkspaceTimestamp(workspace);
+      return false;
+    }
+    if (localChangeRevision !== lastCloudSavedRevision) return false;
+    state = normalizeState(workspace.lineupState);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    if (workspace.studioData) {
+      localStorage.setItem(studioStorageKey, JSON.stringify(workspace.studioData));
+    }
+    rememberCloudWorkspaceTimestamp(workspace);
+    lastCloudSavedRevision = localChangeRevision;
+    render();
+    if (options.toastMessage) toast(options.toastMessage);
+    return true;
+  } catch (error) {
+    console.warn("Could not refresh cloud workspace.", error);
+    return false;
+  } finally {
+    cloudPullInFlight = false;
+  }
+}
+
+function startCloudSyncLoop() {
+  if (!getCloudSession()) return;
+  restoreCloudWorkspaceTimestamp();
+  window.clearInterval(cloudSyncTimer);
+  cloudSyncTimer = window.setInterval(() => {
+    if (!document.hidden) refreshCloudWorkspaceIfNewer({ toastMessage: "Synced latest cloud changes." });
+  }, 12_000);
+  if (!cloudSyncListenersBound) {
+    cloudSyncListenersBound = true;
+    window.addEventListener("focus", () => refreshCloudWorkspaceIfNewer({ toastMessage: "Synced latest cloud changes." }));
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshCloudWorkspaceIfNewer({ toastMessage: "Synced latest cloud changes." });
+    });
+  }
+}
+
+function stopCloudSyncLoop() {
+  window.clearInterval(cloudSyncTimer);
+  cloudSyncTimer = null;
 }
 
 function updateAccountDialog(message = "") {
@@ -662,26 +1251,20 @@ async function loadCloudOnceForSession() {
 
 async function ensureSignedInForApp() {
   if (!requireAccountForApp) return true;
-  if (hasGuestSession()) return true;
-  if (isMobileLayout()) {
-    setGuestSession(true);
-    authGateActive = false;
-    document.body.classList.remove("auth-required");
-    closeDialog(els.accountDialog);
-    return true;
-  }
   try {
     if (window.location.protocol !== "file:") {
       const session = await getValidCloudSession();
       if (session?.access_token) {
         setCloudSession(session);
         await loadCloudOnceForSession();
+        startCloudSyncLoop();
         return true;
       }
     }
   } catch (error) {
     console.warn("Account check failed.", error);
   }
+  if (hasGuestSession()) return true;
   openRequiredAccountDialog();
   return false;
 }
@@ -808,6 +1391,19 @@ function activeShow() {
   return state.shows.find((show) => show.id === state.activeShowId) || state.shows[0];
 }
 
+function showStateFromShow(show = {}) {
+  return {
+    name: show.name || defaultShowName,
+    date: show.date || new Date().toISOString().slice(0, 10),
+    notes: show.notes || "",
+    team: show.team || "",
+    slideExportTheme: normalizeSlideExportTheme(show.slideExportTheme || {}),
+    slideExportShowTitles: Boolean(show.slideExportShowTitles),
+    slideExportShowCredits: Boolean(show.slideExportShowCredits),
+    slideExportShowCount: Boolean(show.slideExportShowCount),
+  };
+}
+
 function syncActiveShowFromFields() {
   if (!state.shows?.length) return;
   const show = activeShow();
@@ -815,6 +1411,10 @@ function syncActiveShowFromFields() {
   show.date = state.show.date;
   show.notes = state.show.notes || "";
   show.team = state.show.team || "";
+  show.slideExportTheme = normalizeSlideExportTheme(state.show.slideExportTheme || {});
+  show.slideExportShowTitles = Boolean(state.show.slideExportShowTitles);
+  show.slideExportShowCredits = Boolean(state.show.slideExportShowCredits);
+  show.slideExportShowCount = Boolean(state.show.slideExportShowCount);
   show.lineup = state.lineup;
 }
 
@@ -831,7 +1431,7 @@ function isUnchangedDraftShow(show) {
 
 function storageState() {
   const shows = (state.shows || []).filter((show) => !isUnchangedDraftShow(show));
-  const savedActiveShow = shows.find((show) => show.id === state.activeShowId) || shows[0] || activeShow();
+  const savedActiveShow = shows.find((show) => show.id === state.activeShowId) || shows[0] || null;
   return {
     ...state,
     activeShowId: savedActiveShow?.id || state.activeShowId,
@@ -841,6 +1441,10 @@ function storageState() {
           date: savedActiveShow.date,
           notes: savedActiveShow.notes || "",
           team: savedActiveShow.team || "",
+          slideExportTheme: normalizeSlideExportTheme(savedActiveShow.slideExportTheme || {}),
+          slideExportShowTitles: Boolean(savedActiveShow.slideExportShowTitles),
+          slideExportShowCredits: Boolean(savedActiveShow.slideExportShowCredits),
+          slideExportShowCount: Boolean(savedActiveShow.slideExportShowCount),
         }
       : state.show,
     shows: shows.map(({ draft, ...show }) => show),
@@ -855,14 +1459,31 @@ function commitShowMetaFromFields() {
 
 function normalizeCategoryName(name) {
   if (name === "Session") return "Song Session";
-  if (name === "Special") return "Other";
+  if (name === "Special" || name === "Other") return "";
   if (!name) return "";
-  if (name === "Services" || name === "Song Session" || name === "Other") return name;
-  return "Other";
+  if (name === "Services" || name === "Song Session") return name;
+  return "";
+}
+
+function normalizeSongCategories(value) {
+  const rawCategories = Array.isArray(value) ? value : String(value || "").split(/[|,]/);
+  const seen = new Set();
+  return rawCategories
+    .map((category) => normalizeCategoryName(String(category).trim()))
+    .filter(Boolean)
+    .filter((category) => {
+      if (seen.has(category)) return false;
+      seen.add(category);
+      return true;
+    });
+}
+
+function songCategoryNames(song) {
+  return normalizeSongCategories(song?.categories?.length ? song.categories : song?.category);
 }
 
 function categoryFor(name) {
-  const normalized = normalizeCategoryName(name);
+  const normalized = normalizeSongCategories(name)[0] || "";
   return categories.find((category) => category.name === normalized) || { name: "", color: "#7b8794" };
 }
 
@@ -901,8 +1522,8 @@ function tagString(tags) {
 
 function songMetaLabel(song) {
   const parts = [];
-  const category = normalizeCategoryName(song?.category);
-  if (category) parts.push(category);
+  const songCategories = songCategoryNames(song);
+  if (songCategories.length) parts.push(songCategories.join(", "));
   if (song?.duration) parts.push(song.duration);
   return parts.join(" / ");
 }
@@ -933,19 +1554,92 @@ function slidesButtonTitle(itemOrSong) {
   return "No slides yet";
 }
 
+function lineupStats() {
+  const songs = state.lineup
+    .filter((item) => item.type === "song")
+    .map((item) => ({
+      item,
+      song: songForLineupItem(item),
+    }))
+    .filter((entry) => entry.song);
+  const notes = state.lineup.filter((item) => item.type === "note" && item.text?.trim()).length;
+  const ready = songs.filter(({ item }) => item.ready).length;
+  const slidesReady = songs.filter(({ item, song }) => slidesButtonClass(item) === "ready" || slidesButtonClass(song) === "ready").length;
+  const needsReview = songs.filter(({ item }) => item.slidesStatus === "needs-review").length;
+  const noSlides = songs.filter(({ item, song }) => slidesButtonClass(item) === "empty" && slidesButtonClass(song) === "empty").length;
+  const hebrew = songs.filter(({ song }) => song.hebrew).length;
+  const bangers = songs.filter(({ song }) => song.banger).length;
+  return {
+    totalSongs: songs.length,
+    notes,
+    ready,
+    notReady: Math.max(0, songs.length - ready),
+    slidesReady,
+    needsReview,
+    noSlides,
+    hebrew,
+    bangers,
+  };
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function renderLineupHealth() {
+  const stats = lineupStats();
+  if (!els.lineupNextSteps) return;
+  const slideStatus = stats.noSlides
+    ? stats.noSlides === 1
+      ? "1 needs slides"
+      : `${stats.noSlides} need slides`
+    : stats.needsReview
+      ? stats.needsReview === 1
+        ? "1 needs review"
+        : `${stats.needsReview} need review`
+      : stats.totalSongs
+        ? "Slides ready"
+        : "Slides empty";
+  const steps = [];
+  if (!stats.totalSongs) {
+    steps.push({ tone: "primary", title: "Start with the library", text: "Add songs from the song bank, then arrange them in the lineup." });
+  } else {
+    if (stats.notReady) steps.push({ tone: "warning", title: stats.notReady === 1 ? "1 song is not checked ready" : `${stats.notReady} songs are not checked ready`, text: "Use the ready boxes when each song is confirmed." });
+    if (stats.noSlides) steps.push({ tone: "warning", title: stats.noSlides === 1 ? "1 song needs slides" : `${stats.noSlides} songs need slides`, text: "Open the Slides button on each song and paste lyrics or review existing slides." });
+    if (stats.needsReview) steps.push({ tone: "warning", title: stats.needsReview === 1 ? "1 slide set needs review" : `${stats.needsReview} slide sets need review`, text: "Check slide breaks and mark ready when the lyrics feel clean." });
+    if (!steps.length) steps.push({ tone: "good", title: "Setlist is ready", text: "Everything has slides and every song is marked ready." });
+  }
+
+  els.lineupNextSteps.innerHTML = `
+    <div class="lineup-summary-card">
+      <div>
+        <p class="eyebrow">Next steps</p>
+        <h2>${escapeHtml(steps[0].title)}</h2>
+        <p>${escapeHtml(steps[0].text)}</p>
+      </div>
+      <div class="lineup-summary-stats">
+        <span>${stats.totalSongs} ${stats.totalSongs === 1 ? "song" : "songs"}</span>
+        <span>${stats.bangers ? `${stats.bangers} banger${stats.bangers === 1 ? "" : "s"}` : "No bangers marked"}</span>
+        <span>${stats.hebrew ? `${stats.hebrew} Hebrew song${stats.hebrew === 1 ? "" : "s"}` : "No Hebrew songs"}</span>
+        <span class="${stats.noSlides || stats.needsReview ? "warning" : "good"}">${escapeHtml(slideStatus)}</span>
+      </div>
+    </div>
+  `;
+}
+
 function openSlidesForLineup(lineupId) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
   if (!item || item.type !== "song") return;
   saveState();
-  const path = `/lineups/${encodeURIComponent(state.activeShowId)}/songs/${encodeURIComponent(item.id)}/slides`;
-  if (window.top && window.top !== window) {
-    window.top.location.href = path;
-  } else {
-    window.location.href = path;
-  }
+  openSlidesEditorForLineup(lineupId);
 }
 
 function openSlidesForBankSong(songId) {
+  const existingItem = state.lineup.find((candidate) => candidate.type === "song" && candidate.songId === songId);
+  if (existingItem) {
+    openSlidesForLineup(existingItem.id);
+    return;
+  }
   const item = addSongToLineup(songId, false);
   if (!item) return;
   openSlidesForLineup(item.id);
@@ -964,13 +1658,723 @@ function loadStudioData() {
   }
 }
 
-function findSlideSongForLineupItem(item, song, studioSongs) {
+function saveStudioData(data) {
+  try {
+    localStorage.setItem(studioStorageKey, JSON.stringify({
+      songs: Array.isArray(data?.songs) ? data.songs : [],
+      sessions: Array.isArray(data?.sessions) ? data.sessions : [],
+    }));
+  } catch (error) {
+    console.warn("Slides could not be stored locally.", error);
+  }
+}
+
+function localSlideSongForLineupItem(item) {
+  return item?.slideSaveScope === "local" && item?.localSlideSong && typeof item.localSlideSong === "object"
+    ? item.localSlideSong
+    : null;
+}
+
+function findGlobalSlideSongForLineupItem(item, song, studioSongs) {
   const linkedId = item?.slideSongId || song?.slideSongId || "";
   if (linkedId) {
     const linked = studioSongs.find((candidate) => candidate.id === linkedId);
     if (linked) return linked;
   }
   return studioSongs.find((candidate) => candidate.title?.trim().toLowerCase() === song?.title?.trim().toLowerCase()) || null;
+}
+
+function findSlideSongForLineupItem(item, song, studioSongs) {
+  return localSlideSongForLineupItem(item) || findGlobalSlideSongForLineupItem(item, song, studioSongs);
+}
+
+function slidesContextForLineup(lineupId) {
+  const item = state.lineup.find((candidate) => candidate.id === lineupId);
+  if (!item || item.type !== "song") return null;
+  const song = songForLineupItem(item);
+  if (!song) return null;
+  const studioData = loadStudioData();
+  const scope = item.slideSaveScope === "local" ? "local" : "global";
+  const globalSlideSong = findGlobalSlideSongForLineupItem(item, song, studioData.songs);
+  const localSlideSong = localSlideSongForLineupItem(item);
+  const slideSong = scope === "local" ? localSlideSong : globalSlideSong;
+  return { item, song, studioData, scope, slideSong, globalSlideSong, localSlideSong };
+}
+
+function splitLyricsToSlides(text) {
+  const blocks = String(text || "")
+    .replace(/\r/g, "")
+    .split(/\n\s*\n/g)
+    .map((block) => block.split("\n").map((line) => line.trim()).filter(Boolean))
+    .filter((lines) => lines.length);
+
+  if (!blocks.length) return [];
+  if (blocks.length === 1 && blocks[0].length > 4) {
+    const chunks = [];
+    for (let index = 0; index < blocks[0].length; index += 4) {
+      chunks.push({ lines: blocks[0].slice(index, index + 4) });
+    }
+    return chunks;
+  }
+  return blocks.map((lines) => ({ lines }));
+}
+
+function normalizeSlidesDraft(slides) {
+  const normalized = (Array.isArray(slides) ? slides : [])
+    .map((slide) => {
+      const lines = (Array.isArray(slide?.lines) ? slide.lines : String(slide?.text || "").split(/\r?\n/))
+        .map((line) => String(line || "").trim())
+        .filter(Boolean);
+      return { lines: lines.length ? lines : [""] };
+    });
+  return normalized.length ? normalized : [];
+}
+
+function slidesFromStudioSong(slideSong) {
+  if (!slideSong) return [];
+  return normalizeSlidesDraft(buildSlidesFromStudioSong(slideSong).map((slide) => ({ lines: slide.lines || [] })));
+}
+
+function slideDesignFromStudioSong(slideSong) {
+  const design = slideSong?.design || {};
+  const theme = slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme;
+  const fontSize = clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 22, 78);
+  return { theme, fontSize };
+}
+
+function studioSongFromSlides(song, slides, existingSlideSong = null, design = defaultSlideDesign) {
+  const normalizedSlides = normalizeSlidesDraft(slides);
+  const sectionId = existingSlideSong?.sections?.[0]?.id || makeId("section");
+  const flowId = existingSlideSong?.savedFlows?.[0]?.id || makeId("flow");
+  const lines = [];
+  const lineBreaksAfter = [];
+
+  normalizedSlides.forEach((slide, slideIndex) => {
+    slide.lines.forEach((line) => lines.push(line));
+    if (slideIndex < normalizedSlides.length - 1 && lines.length) {
+      lineBreaksAfter.push(lines.length - 1);
+    }
+  });
+
+  const safeLines = lines.length ? lines : [""];
+  return {
+    ...(existingSlideSong || {}),
+    id: existingSlideSong?.id || makeId("slide-song"),
+    title: song?.title || existingSlideSong?.title || "Untitled",
+    updatedAt: new Date().toISOString(),
+    design: {
+      theme: slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme,
+      fontSize: clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 22, 78),
+    },
+    sections: [{
+      id: sectionId,
+      name: "Lyrics",
+      order: 0,
+      hidden: false,
+      lines: safeLines,
+      lineBreaksAfter,
+    }],
+    savedFlows: [{
+      id: flowId,
+      name: "Default",
+      selectedSectionInstances: [{
+        id: "lineup-slides-flow",
+        sectionId,
+        label: "Lyrics",
+        selectedLineIndexes: safeLines.map((_, index) => index),
+      }],
+      slideBreaks: [],
+    }],
+  };
+}
+
+function syncSlidesEditorToStorage(markNeedsReview = true) {
+  if (!activeSlidesContext?.lineupId) return null;
+  const context = slidesContextForLineup(activeSlidesContext.lineupId);
+  if (!context) return null;
+  const scope = activeSlidesContext.scope === "local" ? "local" : "global";
+  context.item.slideSaveScope = scope;
+  const existingSlideSong = scope === "local" ? context.localSlideSong : context.globalSlideSong;
+  const slideSong = studioSongFromSlides(context.song, activeSlidesDraft, existingSlideSong, activeSlidesDesign);
+  const flowId = slideSong.savedFlows?.[0]?.id || "";
+
+  if (scope === "local") {
+    slideSong.id = existingSlideSong?.id || `local-slide-song-${context.item.id}`;
+    context.item.localSlideSong = slideSong;
+    context.item.slideFlowId = flowId;
+    if (markNeedsReview) {
+      context.item.slidesStatus = "needs-review";
+    } else {
+      context.item.slidesStatus = !context.item.slidesStatus || context.item.slidesStatus === "no-slides"
+        ? "needs-review"
+        : context.item.slidesStatus;
+    }
+    saveState();
+    renderLineup();
+    renderSongBank();
+    if (slidePreviewOpen) renderSlidePreview();
+    return slideSong;
+  }
+
+  const nextStudioSongs = Array.isArray(context.studioData.songs) ? [...context.studioData.songs] : [];
+  const existingIndex = nextStudioSongs.findIndex((candidate) => candidate.id === slideSong.id);
+  if (existingIndex >= 0) nextStudioSongs[existingIndex] = slideSong;
+  else nextStudioSongs.unshift(slideSong);
+
+  saveStudioData({ ...context.studioData, songs: nextStudioSongs });
+
+  context.item.slideSongId = slideSong.id;
+  context.item.slideFlowId = flowId;
+  context.song.slideSongId = slideSong.id;
+  context.song.slideFlowId = flowId;
+  if (markNeedsReview) {
+    context.item.slidesStatus = "needs-review";
+    context.song.slidesStatus = "needs-review";
+  } else {
+    context.item.slidesStatus = !context.item.slidesStatus || context.item.slidesStatus === "no-slides"
+      ? "needs-review"
+      : context.item.slidesStatus;
+    context.song.slidesStatus = !context.song.slidesStatus || context.song.slidesStatus === "no-slides"
+      ? context.item.slidesStatus
+      : context.song.slidesStatus;
+  }
+  saveState();
+  renderLineup();
+  renderSongBank();
+  if (slidePreviewOpen) renderSlidePreview();
+  return slideSong;
+}
+
+function setActiveSlidesStatus(status) {
+  if (!activeSlidesContext?.lineupId) return;
+  const context = slidesContextForLineup(activeSlidesContext.lineupId);
+  if (!context) return;
+  context.item.slidesStatus = status;
+  if ((activeSlidesContext.scope || context.scope) !== "local") {
+    context.song.slidesStatus = status;
+  }
+  saveState();
+  renderLineup();
+  renderSongBank();
+  renderSlidesEditor(true);
+}
+
+function openSlidesEditorForLineup(lineupId) {
+  const context = slidesContextForLineup(lineupId);
+  if (!context) return;
+  activeSlidesContext = { lineupId, songId: context.song.id, scope: context.scope };
+  activeSlidesDraft = slidesFromStudioSong(context.slideSong);
+  activeSlidesDesign = slideDesignFromStudioSong(context.slideSong);
+  activeSlidesIndex = 0;
+  activeSlidesUndoStack = [];
+  activeSlidesRedoStack = [];
+
+  if (context.scope !== "local" && context.slideSong && !context.item.slideSongId) {
+    context.item.slideSongId = context.slideSong.id;
+    context.item.slideFlowId = context.slideSong.savedFlows?.[0]?.id || "";
+    context.item.slidesStatus = context.item.slidesStatus === "no-slides" ? "needs-review" : context.item.slidesStatus;
+    context.song.slideSongId = context.slideSong.id;
+    context.song.slideFlowId = context.item.slideFlowId;
+    context.song.slidesStatus = context.item.slidesStatus;
+    saveState();
+    renderLineup();
+    renderSongBank();
+  }
+
+  if (els.slidesFullLyrics) els.slidesFullLyrics.value = "";
+  if (els.slidesSaveScopeSelect) els.slidesSaveScopeSelect.value = activeSlidesContext.scope;
+  renderSlidesEditor();
+  openDialog(els.slidesEditorDialog);
+  window.setTimeout(() => {
+    if (activeSlidesDraft.length) els.slidesCurrentText?.focus();
+    else els.slidesFullLyrics?.focus();
+  }, 50);
+}
+
+function closeSlidesEditor(showSavedToast = false) {
+  if (activeSlidesContext?.lineupId && activeSlidesDraft.length) {
+    syncSlidesEditorToStorage(false);
+  }
+  closeDialog(els.slidesEditorDialog);
+  activeSlidesContext = null;
+  activeSlidesDraft = [];
+  activeSlidesUndoStack = [];
+  activeSlidesRedoStack = [];
+  if (showSavedToast) toast("Progress has been saved.");
+}
+
+function setSlidesSaveScope(scope) {
+  if (!activeSlidesContext?.lineupId) return;
+  const nextScope = scope === "local" ? "local" : "global";
+  if (activeSlidesContext.scope === nextScope) return;
+  activeSlidesContext.scope = nextScope;
+  const context = slidesContextForLineup(activeSlidesContext.lineupId);
+  if (!context) return;
+  context.item.slideSaveScope = nextScope;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor(true);
+  toast(nextScope === "local" ? "Slide edits will stay on this setlist." : "Slide edits will update the song library.");
+}
+
+function activeSlidesSnapshot() {
+  return {
+    draft: cloneData(activeSlidesDraft),
+    index: activeSlidesIndex,
+    design: cloneData(activeSlidesDesign),
+  };
+}
+
+function recordSlidesUndo() {
+  if (restoringSlidesHistory) return;
+  pushHistorySnapshot(activeSlidesUndoStack, activeSlidesSnapshot());
+  activeSlidesRedoStack = [];
+}
+
+function restoreSlidesSnapshot(snapshot) {
+  restoringSlidesHistory = true;
+  activeSlidesDraft = cloneData(snapshot.draft || []);
+  activeSlidesIndex = clampNumber(Number(snapshot.index) || 0, 0, Math.max(activeSlidesDraft.length - 1, 0));
+  activeSlidesDesign = { ...defaultSlideDesign, ...(snapshot.design || {}) };
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+  restoringSlidesHistory = false;
+}
+
+function undoSlidesEditor() {
+  if (!activeSlidesUndoStack.length) {
+    toast("Nothing to undo.");
+    return;
+  }
+  activeSlidesRedoStack.push(activeSlidesSnapshot());
+  restoreSlidesSnapshot(activeSlidesUndoStack.pop());
+  toast("Slide edit undone.");
+}
+
+function redoSlidesEditor() {
+  if (!activeSlidesRedoStack.length) {
+    toast("Nothing to redo.");
+    return;
+  }
+  activeSlidesUndoStack.push(activeSlidesSnapshot());
+  restoreSlidesSnapshot(activeSlidesRedoStack.pop());
+  toast("Slide edit redone.");
+}
+
+function renderSlidesEditor(preserveCurrentText = false) {
+  const context = activeSlidesContext?.lineupId ? slidesContextForLineup(activeSlidesContext.lineupId) : null;
+  if (!context) return;
+  const hasSlides = activeSlidesDraft.length > 0;
+  const status = context.item.slidesStatus || "no-slides";
+  const statusClass = slidesStatusClass(status);
+
+  if (els.slidesEditorTitle) els.slidesEditorTitle.textContent = context.song.title || "Song Slides";
+  if (els.slidesSetupTitle) els.slidesSetupTitle.textContent = `Create slides for "${context.song.title || "this song"}"`;
+  if (els.slidesSaveScopeSelect) els.slidesSaveScopeSelect.value = activeSlidesContext?.scope || context.scope || "global";
+  if (els.slidesEditorStatus) {
+    els.slidesEditorStatus.textContent = slidesStatusLabel(hasSlides ? status : "no-slides");
+    els.slidesEditorStatus.className = `slides-editor-status ${statusClass}`;
+  }
+  if (els.slidesSetupView) els.slidesSetupView.hidden = hasSlides;
+  if (els.slidesWorkspaceView) els.slidesWorkspaceView.hidden = !hasSlides;
+  if (els.slidesEditorPreviewButton) els.slidesEditorPreviewButton.disabled = !hasSlides;
+  if (els.slidesEditorReadyButton) {
+    els.slidesEditorReadyButton.disabled = !hasSlides || status === "slides-ready";
+    els.slidesEditorReadyButton.querySelector("span").textContent = status === "slides-ready" ? "Ready" : "Mark ready";
+  }
+
+  if (!hasSlides) return;
+
+  activeSlidesDraft = normalizeSlidesDraft(activeSlidesDraft);
+  activeSlidesIndex = clampNumber(activeSlidesIndex, 0, Math.max(activeSlidesDraft.length - 1, 0));
+  const activeSlide = activeSlidesDraft[activeSlidesIndex] || { lines: [""] };
+  const currentLines = activeSlide.lines.filter(Boolean);
+  const previewLines = currentLines.length ? currentLines : ["Instrumental"];
+
+  if (els.slidesEditorList) {
+    els.slidesEditorList.innerHTML = activeSlidesDraft.map((slide, index) => {
+      const lines = slide.lines.filter(Boolean);
+      const preview = lines[0] || "Instrumental";
+      return `
+        <button class="slides-list-item ${index === activeSlidesIndex ? "active" : ""}" type="button" data-slide-index="${index}">
+          <span>${index + 1}</span>
+          <strong>${escapeHtml(preview)}</strong>
+          <small>${lines.length || 1} line${(lines.length || 1) === 1 ? "" : "s"}</small>
+        </button>
+      `;
+    }).join("");
+  }
+
+  if (els.slidesLivePreview) {
+    els.slidesLivePreview.className = `slides-live-preview theme-${activeSlidesDesign.theme}`;
+    els.slidesLivePreview.style.setProperty("--slide-editor-font-size", `${activeSlidesDesign.fontSize}px`);
+    els.slidesLivePreview.innerHTML = `
+      <div class="slides-live-lines">
+        ${previewLines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+      </div>
+      <small>Created with LINEUP / Songleading.net</small>
+    `;
+  }
+
+  if (els.slidesCurrentLabel) {
+    els.slidesCurrentLabel.textContent = `Slide ${activeSlidesIndex + 1} lyrics`;
+  }
+  if (els.slidesCurrentText && (!preserveCurrentText || document.activeElement !== els.slidesCurrentText)) {
+    els.slidesCurrentText.value = activeSlide.lines.join("\n");
+  }
+  if (els.slidesFontSizeValue) els.slidesFontSizeValue.textContent = String(activeSlidesDesign.fontSize);
+  if (els.slidesThemeButtons) {
+    els.slidesThemeButtons.innerHTML = slideThemeOptions.map((option) => `
+      <button class="slides-theme-swatch ${option.id === activeSlidesDesign.theme ? "active" : ""} theme-${option.id}" type="button" data-slide-theme="${option.id}" role="radio" aria-checked="${option.id === activeSlidesDesign.theme}">
+        <span></span>
+        ${escapeHtml(option.label)}
+      </button>
+    `).join("");
+  }
+
+  const isFirst = activeSlidesIndex <= 0;
+  const isLast = activeSlidesIndex >= activeSlidesDraft.length - 1;
+  if (els.slidesUndoButton) els.slidesUndoButton.disabled = !activeSlidesUndoStack.length;
+  if (els.slidesRedoButton) els.slidesRedoButton.disabled = !activeSlidesRedoStack.length;
+  if (els.slidesMoveUpButton) els.slidesMoveUpButton.disabled = isFirst;
+  if (els.slidesMoveDownButton) els.slidesMoveDownButton.disabled = isLast;
+  if (els.slidesSplitButton) els.slidesSplitButton.disabled = !activeSlidesDraft.length;
+  if (els.slidesSentencePreviousButton) els.slidesSentencePreviousButton.disabled = !activeSlidesDraft.length;
+  if (els.slidesSentenceNextButton) els.slidesSentenceNextButton.disabled = !activeSlidesDraft.length;
+  if (els.slidesJoinPreviousButton) els.slidesJoinPreviousButton.disabled = isFirst;
+  if (els.slidesJoinNextButton) els.slidesJoinNextButton.disabled = isLast;
+  if (els.slidesDeleteButton) els.slidesDeleteButton.disabled = activeSlidesDraft.length <= 1;
+}
+
+function createSlidesFromPastedLyrics() {
+  const slides = splitLyricsToSlides(els.slidesFullLyrics?.value || "");
+  if (!slides.length) {
+    toast("Paste lyrics first.");
+    els.slidesFullLyrics?.focus();
+    return;
+  }
+  recordSlidesUndo();
+  activeSlidesDraft = normalizeSlidesDraft(slides);
+  activeSlidesIndex = 0;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+  els.slidesCurrentText?.focus();
+  toast("Slides created for this song.");
+}
+
+function fillSlidesFromSongNotes() {
+  const context = activeSlidesContext?.lineupId ? slidesContextForLineup(activeSlidesContext.lineupId) : null;
+  const notes = context?.song?.notes || "";
+  if (!notes.trim()) {
+    toast("This song does not have notes to use.");
+    return;
+  }
+  if (els.slidesFullLyrics) {
+    els.slidesFullLyrics.value = notes.trim();
+    els.slidesFullLyrics.focus();
+  }
+}
+
+function updateCurrentSlideText() {
+  if (!activeSlidesDraft.length) return;
+  const lines = String(els.slidesCurrentText?.value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLines = lines.length ? lines : [""];
+  if (JSON.stringify(activeSlidesDraft[activeSlidesIndex]?.lines || []) === JSON.stringify(nextLines)) return;
+  recordSlidesUndo();
+  activeSlidesDraft[activeSlidesIndex] = { lines: nextLines };
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor(true);
+}
+
+function selectSlidesEditorSlide(index) {
+  if (!activeSlidesDraft.length) return;
+  activeSlidesIndex = clampNumber(Number(index) || 0, 0, activeSlidesDraft.length - 1);
+  renderSlidesEditor();
+}
+
+function addSlidesEditorSlide() {
+  const insertAt = activeSlidesDraft.length ? activeSlidesIndex + 1 : 0;
+  recordSlidesUndo();
+  activeSlidesDraft.splice(insertAt, 0, { lines: ["New lyric line"] });
+  activeSlidesIndex = insertAt;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+  els.slidesCurrentText?.focus();
+  els.slidesCurrentText?.select();
+}
+
+function duplicateSlidesEditorSlide() {
+  if (!activeSlidesDraft.length) return;
+  recordSlidesUndo();
+  const copy = { lines: [...activeSlidesDraft[activeSlidesIndex].lines] };
+  activeSlidesDraft.splice(activeSlidesIndex + 1, 0, copy);
+  activeSlidesIndex += 1;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+}
+
+function deleteSlidesEditorSlide() {
+  if (activeSlidesDraft.length <= 1) return;
+  recordSlidesUndo();
+  activeSlidesDraft.splice(activeSlidesIndex, 1);
+  activeSlidesIndex = Math.min(activeSlidesIndex, activeSlidesDraft.length - 1);
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+}
+
+function moveSlidesEditorSlide(offset) {
+  const nextIndex = activeSlidesIndex + offset;
+  if (nextIndex < 0 || nextIndex >= activeSlidesDraft.length) return;
+  recordSlidesUndo();
+  const [slide] = activeSlidesDraft.splice(activeSlidesIndex, 1);
+  activeSlidesDraft.splice(nextIndex, 0, slide);
+  activeSlidesIndex = nextIndex;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+}
+
+function joinSlidesEditorSlide(direction) {
+  if (!activeSlidesDraft.length) return;
+  const targetIndex = direction === "previous" ? activeSlidesIndex - 1 : activeSlidesIndex + 1;
+  if (targetIndex < 0 || targetIndex >= activeSlidesDraft.length) return;
+  recordSlidesUndo();
+  if (direction === "previous") {
+    activeSlidesDraft[targetIndex].lines = [
+      ...activeSlidesDraft[targetIndex].lines.filter(Boolean),
+      ...activeSlidesDraft[activeSlidesIndex].lines.filter(Boolean),
+    ];
+    activeSlidesDraft.splice(activeSlidesIndex, 1);
+    activeSlidesIndex = targetIndex;
+  } else {
+    activeSlidesDraft[activeSlidesIndex].lines = [
+      ...activeSlidesDraft[activeSlidesIndex].lines.filter(Boolean),
+      ...activeSlidesDraft[targetIndex].lines.filter(Boolean),
+    ];
+    activeSlidesDraft.splice(targetIndex, 1);
+  }
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+}
+
+function selectedSlideLineIndexes(text, selectionStart, selectionEnd) {
+  const lines = String(text || "").split(/\r?\n/);
+  const indexes = [];
+  let cursor = 0;
+  const hasRange = selectionEnd > selectionStart;
+
+  lines.forEach((line, index) => {
+    const lineStart = cursor;
+    const lineEnd = cursor + line.length;
+    const nextCursor = lineEnd + 1;
+    const overlapsRange = hasRange && selectionStart < nextCursor && selectionEnd > lineStart;
+    const containsCursor = !hasRange && selectionStart >= lineStart && selectionStart <= lineEnd;
+    if ((overlapsRange || containsCursor) && line.trim()) indexes.push(index);
+    cursor = nextCursor;
+  });
+
+  return indexes.length ? indexes : lines.map((line, index) => line.trim() ? index : -1).filter((index) => index >= 0).slice(0, 1);
+}
+
+function moveSlidesEditorLine(direction) {
+  if (!activeSlidesDraft.length) return;
+  const textarea = els.slidesCurrentText;
+  const currentText = String(textarea?.value || activeSlidesDraft[activeSlidesIndex].lines.join("\n"));
+  const rawLines = currentText.split(/\r?\n/);
+  const selectionStart = textarea?.selectionStart ?? 0;
+  const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+  const selectedIndexes = new Set(selectedSlideLineIndexes(currentText, selectionStart, selectionEnd));
+  const movingLines = rawLines.filter((line, index) => selectedIndexes.has(index) && line.trim()).map((line) => line.trim());
+
+  if (!movingLines.length) {
+    toast("Place the cursor on a lyric line first.");
+    return;
+  }
+
+  recordSlidesUndo();
+
+  const remainingLines = rawLines.filter((line, index) => !selectedIndexes.has(index) && line.trim()).map((line) => line.trim());
+  activeSlidesDraft[activeSlidesIndex] = { lines: remainingLines.length ? remainingLines : [""] };
+
+  let destinationIndex;
+  if (direction === "previous") {
+    if (activeSlidesIndex === 0) {
+      activeSlidesDraft.splice(0, 0, { lines: [] });
+      activeSlidesIndex += 1;
+    }
+    destinationIndex = activeSlidesIndex - 1;
+    activeSlidesDraft[destinationIndex].lines = [
+      ...(activeSlidesDraft[destinationIndex].lines || []).filter(Boolean),
+      ...movingLines,
+    ];
+  } else {
+    if (activeSlidesIndex === activeSlidesDraft.length - 1) {
+      activeSlidesDraft.splice(activeSlidesIndex + 1, 0, { lines: [] });
+    }
+    destinationIndex = activeSlidesIndex + 1;
+    activeSlidesDraft[destinationIndex].lines = [
+      ...movingLines,
+      ...(activeSlidesDraft[destinationIndex].lines || []).filter(Boolean),
+    ];
+  }
+
+  activeSlidesIndex = destinationIndex;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+  els.slidesCurrentText?.focus();
+  toast(direction === "previous" ? "Line moved to previous slide." : "Line moved to next slide.");
+}
+
+function splitSlidesEditorSlide() {
+  if (!activeSlidesDraft.length) return;
+  const currentText = String(els.slidesCurrentText?.value || activeSlidesDraft[activeSlidesIndex].lines.join("\n"));
+  const selectionStart = els.slidesCurrentText?.selectionStart ?? -1;
+  const selectionEnd = els.slidesCurrentText?.selectionEnd ?? selectionStart;
+  let firstLines = [];
+  let secondLines = [];
+
+  if (selectionStart > 0 && selectionStart < currentText.length && selectionStart === selectionEnd) {
+    firstLines = currentText.slice(0, selectionStart).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    secondLines = currentText.slice(selectionStart).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  }
+
+  if (!firstLines.length || !secondLines.length) {
+    const lines = activeSlidesDraft[activeSlidesIndex].lines.map((line) => line.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      toast("Add another line or place the cursor where the split should happen.");
+      return;
+    }
+    const splitAt = Math.ceil(lines.length / 2);
+    firstLines = lines.slice(0, splitAt);
+    secondLines = lines.slice(splitAt);
+  }
+
+  recordSlidesUndo();
+  activeSlidesDraft[activeSlidesIndex] = { lines: firstLines };
+  activeSlidesDraft.splice(activeSlidesIndex + 1, 0, { lines: secondLines });
+  activeSlidesIndex += 1;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor();
+  els.slidesCurrentText?.focus();
+  toast("Slide split into two.");
+}
+
+function changeSlidesEditorFont(delta) {
+  const nextSize = clampNumber((Number(activeSlidesDesign.fontSize) || defaultSlideDesign.fontSize) + delta, 22, 78);
+  if (nextSize === activeSlidesDesign.fontSize) return;
+  recordSlidesUndo();
+  activeSlidesDesign.fontSize = nextSize;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor(true);
+}
+
+function wrappedLineCount(context, text, maxWidth) {
+  const value = String(text || "").trim();
+  if (!value) return 1;
+  const words = value.split(/\s+/).filter(Boolean);
+  let lines = 1;
+  let current = "";
+
+  const appendToken = (token) => {
+    const next = current ? `${current} ${token}` : token;
+    if (context.measureText(next).width <= maxWidth) {
+      current = next;
+      return;
+    }
+
+    if (current) lines += 1;
+    current = "";
+
+    if (context.measureText(token).width <= maxWidth) {
+      current = token;
+      return;
+    }
+
+    let fragment = "";
+    Array.from(token).forEach((character) => {
+      const candidate = `${fragment}${character}`;
+      if (fragment && context.measureText(candidate).width > maxWidth) {
+        lines += 1;
+        fragment = character;
+      } else {
+        fragment = candidate;
+      }
+    });
+    current = fragment;
+  };
+
+  words.forEach(appendToken);
+  return lines;
+}
+
+function slideTextFitsAtSize(lines, fontSize, availableWidth, availableHeight) {
+  const canvas = slideTextFitsAtSize.canvas || (slideTextFitsAtSize.canvas = document.createElement("canvas"));
+  const context = canvas.getContext("2d");
+  if (!context) return true;
+  context.font = `900 ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
+  const wrappedLines = lines.reduce((count, line) => count + wrappedLineCount(context, line, availableWidth), 0);
+  const lineHeight = fontSize * 1.05;
+  const gapHeight = Math.max(0, wrappedLines - 1) * fontSize * 0.18;
+  const totalHeight = wrappedLines * lineHeight + gapHeight;
+  return totalHeight <= availableHeight;
+}
+
+function fitSlidesEditorFontToScreen() {
+  if (!activeSlidesDraft.length) return;
+  const preview = els.slidesLivePreview;
+  const previewRect = preview?.getBoundingClientRect();
+  const lines = activeSlidesDraft[activeSlidesIndex]?.lines?.filter(Boolean) || [""];
+  const computed = preview ? window.getComputedStyle(preview) : null;
+  const paddingX = computed ? parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight) : 96;
+  const paddingY = computed ? parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom) : 96;
+  const width = Math.max(120, (previewRect?.width || 960) - paddingX - 24);
+  const height = Math.max(90, (previewRect?.height || 540) - paddingY - 48);
+  let low = 22;
+  let high = 78;
+  let best = 22;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (slideTextFitsAtSize(lines, middle, width, height)) {
+      best = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  const nextSize = Math.round(clampNumber(best, 22, 78));
+  if (nextSize === activeSlidesDesign.fontSize) return;
+  recordSlidesUndo();
+  activeSlidesDesign.fontSize = nextSize;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor(true);
+  toast("Text fitted to the slide.");
+}
+
+function setSlidesEditorTheme(theme) {
+  if (!slideThemeOptions.some((option) => option.id === theme)) return;
+  if (activeSlidesDesign.theme === theme) return;
+  recordSlidesUndo();
+  activeSlidesDesign.theme = theme;
+  syncSlidesEditorToStorage(true);
+  renderSlidesEditor(true);
+}
+
+function markSlidesEditorReady() {
+  if (!activeSlidesDraft.length) return;
+  syncSlidesEditorToStorage(false);
+  setActiveSlidesStatus("slides-ready");
+  toast("Slides marked ready.");
+}
+
+function previewSlidesEditorSet() {
+  if (!activeSlidesDraft.length) return;
+  syncSlidesEditorToStorage(false);
+  closeSlidesEditor();
+  activeSlidePreviewIndex = 0;
+  setSlidePreviewOpen(true);
 }
 
 function flattenStudioFlow(sections = [], flow = []) {
@@ -1044,13 +2448,14 @@ function buildLineupSlideDeck() {
           kind: "note",
           title: "Note",
           lines: [item.text.trim()],
+          credits: "",
           meta: `${index + 1}`,
         });
       }
       return;
     }
 
-    const song = state.songs.find((candidate) => candidate.id === item.songId);
+    const song = songForLineupItem(item);
     if (!song) return;
     const slideSong = findSlideSongForLineupItem(item, song, studioData.songs);
     const songSlides = slideSong ? buildSlidesFromStudioSong(slideSong, item.slideFlowId) : [];
@@ -1060,6 +2465,7 @@ function buildLineupSlideDeck() {
         slides.push({
           ...slide,
           kind: "lyrics",
+          credits: song.credits || "",
           meta: `${index + 1}${slide.section ? ` · ${slide.section}` : ""}${songSlides.length > 1 ? ` · ${slideIndex + 1}/${songSlides.length}` : ""}`,
         });
       });
@@ -1070,6 +2476,7 @@ function buildLineupSlideDeck() {
       kind: "missing",
       title: song.title,
       lines: ["Slides not connected yet"],
+      credits: song.credits || "",
       meta: `${index + 1}`,
     });
   });
@@ -1115,10 +2522,11 @@ function renderSlidePreview() {
   const slide = slides[activeSlidePreviewIndex];
   const kind = ["note", "missing"].includes(slide.kind) ? slide.kind : "lyrics";
   const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
+  const showTitle = Boolean(state.show.slideExportShowTitles);
   els.slidePreviewStage.innerHTML = `
-    <div class="mini-slide ${kind}">
+    <div class="mini-slide ${kind}${showTitle ? " has-title" : ""}">
       <div class="mini-slide-meta">${escapeHtml(slide.meta || "")}</div>
-      <strong>${escapeHtml(slide.title || "Slide")}</strong>
+      ${showTitle ? `<strong>${escapeHtml(slide.title || "Slide")}</strong>` : ""}
       <div class="mini-slide-lines">
         ${lines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
       </div>
@@ -1130,27 +2538,14 @@ function renderSlidePreview() {
   if (els.nextSlidePreviewButton) els.nextSlidePreviewButton.disabled = activeSlidePreviewIndex >= total - 1;
 }
 
-function slidesExportThemeCss(theme = {}) {
-  if (theme.image) {
-    return `.slide { background: linear-gradient(rgba(3,7,18,.56), rgba(3,7,18,.66)), url("${theme.image}") center / cover no-repeat; }`;
-  }
-  if (theme.name === "shabbat") {
-    return `.slide { background: radial-gradient(circle at 25% 15%, rgba(255,224,158,.35), transparent 24%), radial-gradient(circle at 75% 12%, rgba(255,245,210,.26), transparent 22%), linear-gradient(135deg, #130d08, #05070b 62%); }`;
-  }
-  if (theme.name === "campfire") {
-    return `.slide { background: radial-gradient(circle at 50% 100%, rgba(255,122,36,.34), transparent 36%), linear-gradient(145deg, #211007, #07111f 72%); }`;
-  }
-  if (theme.name === "bright") {
-    return `:root { color-scheme: light; --bg:#fffaf2; --ink:#101827; --muted:#596678; --accent:#2563eb; --watermark:rgba(15,23,42,.45); } .slide { background:#fffaf2; } .slide.note { background:#fff7dd; }`;
-  }
-  return "";
-}
-
 function loadSlidesThemePresets() {
   try {
     const parsed = JSON.parse(localStorage.getItem(slidesThemePresetsStorageKey) || "[]");
     return Array.isArray(parsed)
-      ? parsed.filter((preset) => preset?.id && preset?.name && preset?.image).slice(0, 24)
+      ? parsed
+          .filter((preset) => preset?.id && preset?.name && preset?.image)
+          .map((preset) => ({ ...preset, crop: sanitizeSlideExportCrop(preset.crop) }))
+          .slice(0, 24)
       : [];
   } catch {
     return [];
@@ -1170,6 +2565,33 @@ function selectedSlidesThemePreset() {
   return loadSlidesThemePresets().find((preset) => preset.id === presetId) || null;
 }
 
+function selectedSlidesExportCrop() {
+  return sanitizeSlideExportCrop({
+    zoom: els.slidesExportImageZoom?.value,
+    x: els.slidesExportImageX?.value,
+    y: els.slidesExportImageY?.value,
+  });
+}
+
+function applySlidesExportThemeControls(theme = {}) {
+  const normalized = normalizeSlideExportTheme(theme);
+  const selected = document.querySelector(`input[name='slidesExportTheme'][value='${normalized.name}']`);
+  if (selected) selected.checked = true;
+  if (els.slidesExportImageZoom) els.slidesExportImageZoom.value = String(normalized.crop.zoom);
+  if (els.slidesExportImageX) els.slidesExportImageX.value = String(normalized.crop.x);
+  if (els.slidesExportImageY) els.slidesExportImageY.value = String(normalized.crop.y);
+  slidesExportPendingImage = normalized.image || "";
+  setSlidesCropControlsEnabled(Boolean(normalized.image));
+}
+
+function setSlidesCropControlsEnabled(enabled) {
+  [els.slidesExportImageZoom, els.slidesExportImageX, els.slidesExportImageY].forEach((input) => {
+    if (!input) return;
+    input.disabled = !enabled;
+    input.closest("label")?.classList.toggle("is-disabled", !enabled);
+  });
+}
+
 function renderSlidesPresetOptions() {
   const presets = loadSlidesThemePresets();
   if (!els.slidesExportPresetSelect) return;
@@ -1181,62 +2603,110 @@ function renderSlidesPresetOptions() {
 }
 
 function slidesThemePreviewStyle(theme = {}) {
+  theme = normalizeSlideExportTheme(theme);
   if (theme.image) {
-    return `background-image: linear-gradient(rgba(3,7,18,.42), rgba(3,7,18,.56)), url("${theme.image}");`;
+    const crop = sanitizeSlideExportCrop(theme.crop);
+    return `--theme-image:url("${cssUrl(theme.image)}"); --theme-x:${crop.x}%; --theme-y:${crop.y}%; --theme-scale:${(crop.zoom / 100).toFixed(2)};`;
   }
   if (theme.name === "shabbat") {
-    return "background-image: radial-gradient(circle at 24% 18%, rgba(255,224,158,.42), transparent 28%), radial-gradient(circle at 78% 16%, rgba(255,245,210,.3), transparent 24%), linear-gradient(135deg, #1b1008, #05070b 68%);";
+    return "background-image: radial-gradient(ellipse at 30% 68%, rgba(245,159,64,.52), transparent 20%), radial-gradient(ellipse at 63% 68%, rgba(255,226,143,.42), transparent 18%), linear-gradient(180deg, rgba(2,5,12,.08), rgba(2,5,12,.52)), linear-gradient(145deg, #211005, #05070b 72%);";
   }
   if (theme.name === "campfire") {
-    return "background-image: radial-gradient(circle at 50% 100%, rgba(255,122,36,.42), transparent 42%), linear-gradient(145deg, #2a1308, #07111f 72%);";
+    return "background-image: radial-gradient(ellipse at 48% 78%, rgba(255,177,68,.76), transparent 14%), radial-gradient(ellipse at 50% 100%, rgba(255,102,24,.48), transparent 34%), linear-gradient(180deg, #07111f 0%, #11100d 58%, #090504 100%);";
   }
   if (theme.name === "bright") {
-    return "background:#fffaf2; color:#101827;";
+    return "background-image: radial-gradient(circle at 18% 14%, rgba(91,146,255,.18), transparent 26%), radial-gradient(circle at 82% 10%, rgba(243,174,34,.18), transparent 24%), linear-gradient(135deg, #fffaf2, #edf7f5); color:#101827;";
   }
-  return "background-image: radial-gradient(circle at top left, rgba(91,146,255,.22), transparent 36%), linear-gradient(135deg, #07111f, #05070b);";
+  return "background-image: radial-gradient(circle at 18% 12%, rgba(91,146,255,.28), transparent 34%), radial-gradient(circle at 76% 82%, rgba(18,194,170,.18), transparent 28%), linear-gradient(135deg, #07111f, #05070b);";
 }
 
 async function currentSlidesExportTheme() {
   const image = await imageInputToDataUrl(els.slidesExportImage);
+  if (image) slidesExportPendingImage = image;
   const preset = selectedSlidesThemePreset();
+  const saved = normalizeSlideExportTheme(state.show.slideExportTheme || {});
+  const crop = selectedSlidesExportCrop();
   return {
     name: selectedSlidesThemeName(),
-    image: image || preset?.image || "",
-    presetName: preset?.name || "",
+    image: image || preset?.image || slidesExportPendingImage || saved.image || "",
+    presetName: preset?.name || saved.presetName || "",
+    crop,
   };
+}
+
+async function persistCurrentSlidesExportTheme() {
+  state.show.slideExportTheme = normalizeSlideExportTheme(await currentSlidesExportTheme());
+  saveState();
 }
 
 async function renderSlidesExportPreview() {
   if (!els.slidesExportPreview) return;
   const theme = await currentSlidesExportTheme();
-  const label = theme.image ? (theme.presetName || "Uploaded background") : theme.name;
+  const options = getSlidesExportOptions();
+  const slides = buildLineupSlideDeck();
+  const previewSlides = slides.length ? slides : [{
+    kind: "missing",
+    title: "No slides",
+    lines: ["Add songs with slides before exporting."],
+    credits: "",
+    meta: "",
+  }];
+  slidesExportPreviewIndex = Math.max(0, Math.min(slidesExportPreviewIndex, previewSlides.length - 1));
+  const slide = previewSlides[slidesExportPreviewIndex];
+  const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
+  const canMovePrevious = slidesExportPreviewIndex > 0;
+  const canMoveNext = slidesExportPreviewIndex < previewSlides.length - 1;
+  const themeClass = `theme-${theme.image ? "image" : theme.name}`;
+  setSlidesCropControlsEnabled(Boolean(theme.image));
+  els.slidesExportPreview.className = `slides-theme-preview ${themeClass}${theme.image ? " has-custom-image" : ""}`;
   els.slidesExportPreview.setAttribute("style", slidesThemePreviewStyle(theme));
   els.slidesExportPreview.innerHTML = `
+    ${options.showTitles && slide.title ? `<span class="preview-slide-title">${escapeHtml(slide.title)}</span>` : ""}
+    ${options.showCount ? `<span class="preview-slide-count-overlay">${slidesExportPreviewIndex + 1} out of ${previewSlides.length}</span>` : ""}
     <div class="slides-theme-preview-content">
-      <span>${escapeHtml(label === "default" ? "Default" : label)}</span>
-      <strong>Sample lyric line</strong>
-      <small>Created with LINEUP · Songleading.net</small>
+      <div class="preview-slide-lines">
+        ${lines.slice(0, 4).map((line) => `<strong>${escapeHtml(line)}</strong>`).join("")}
+      </div>
     </div>
+    ${options.showCredits && slide.credits ? `<small class="preview-slide-credits">${escapeHtml(slide.credits)}</small>` : ""}
+    <div class="preview-slide-brand" aria-hidden="true">
+      <span>Created with</span>
+      <b><i>♪</i> Songleading.net</b>
+      <em>BY BARAK MALICHI</em>
+    </div>
+    <div class="slides-export-preview-count" aria-live="polite">${slidesExportPreviewIndex + 1} / ${previewSlides.length}</div>
+    ${previewSlides.length > 1 ? `
+      <div class="slides-export-preview-nav" aria-label="Slide preview navigation">
+        <button type="button" data-slide-preview-step="-1" aria-label="Previous slide" ${canMovePrevious ? "" : "disabled"}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button type="button" data-slide-preview-step="1" aria-label="Next slide" ${canMoveNext ? "" : "disabled"}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    ` : ""}
   `;
 }
 
 async function saveCurrentSlidesPreset() {
-  const image = await imageInputToDataUrl(els.slidesExportImage);
+  const image = slidesExportPendingImage || await imageInputToDataUrl(els.slidesExportImage);
   if (!image) {
     toast("Choose a background image first.");
     return;
   }
-  const name = window.prompt("Preset name", "New background");
+  const name = window.prompt("Theme name", "New slideshow theme");
   if (!name?.trim()) return;
   const presets = loadSlidesThemePresets();
-  const preset = { id: makeId("theme"), name: name.trim(), image };
+  const preset = { id: makeId("theme"), name: name.trim(), image, crop: selectedSlidesExportCrop() };
   presets.unshift(preset);
   saveSlidesThemePresets(presets);
   renderSlidesPresetOptions();
   if (els.slidesExportPresetSelect) els.slidesExportPresetSelect.value = preset.id;
   if (els.slidesExportImage) els.slidesExportImage.value = "";
+  state.show.slideExportTheme = normalizeSlideExportTheme({ ...preset, presetName: preset.name, name: selectedSlidesThemeName() });
+  saveState();
   await renderSlidesExportPreview();
-  toast("Background preset saved.");
+  toast("Slideshow theme saved.");
 }
 
 async function deleteCurrentSlidesPreset() {
@@ -1248,74 +2718,14 @@ async function deleteCurrentSlidesPreset() {
   toast("Preset removed.");
 }
 
-function buildSlidesExportHtml(slides, theme = {}) {
-  const title = state.show.name || "Lineup slides";
-  const date = formatExportDate(state.show.date);
-  const slideCount = Math.max(slides.length, 1);
-  const renderedSlides = slides.length ? slides : [{
-    kind: "missing",
-    title: "No slides",
-    lines: ["Add songs with slides before exporting."],
-    meta: "",
-  }];
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} slides</title>
-  <style>
-    :root { color-scheme: dark; --bg:#05070b; --ink:#f8fbff; --muted:#9fb0c6; --accent:#5b92ff; --watermark:rgba(255,255,255,.5); }
-    * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--ink); font-family:Inter, Arial, sans-serif; }
-    .deck-bar { position:fixed; inset:16px 16px auto; z-index:5; display:flex; justify-content:space-between; gap:16px; color:var(--muted); font-size:14px; font-weight:800; letter-spacing:.02em; pointer-events:none; }
-    .slide { min-height:100vh; display:grid; place-items:center; padding:clamp(42px, 7vw, 92px); border-bottom:1px solid rgba(255,255,255,.08); background:radial-gradient(circle at top left, rgba(91,146,255,.18), transparent 34%), #05070b; }
-    .slide.note { background:radial-gradient(circle at top left, rgba(245,181,43,.2), transparent 34%), #080704; }
-    .slide.missing { background:radial-gradient(circle at top left, rgba(165,173,178,.18), transparent 34%), #05070b; }
-    ${slidesExportThemeCss(theme)}
-    .content { width:min(1200px, 92vw); text-align:center; }
-    .meta { margin-bottom:28px; color:var(--accent); font-size:clamp(15px, 2vw, 22px); font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
-    h1 { margin:0 0 42px; font-size:clamp(46px, 8vw, 104px); line-height:.96; letter-spacing:-.03em; }
-    .lyrics { display:grid; gap:.22em; font-size:clamp(38px, 6.2vw, 86px); line-height:1.08; font-weight:900; }
-    .note .lyrics { color:#ffe1a3; font-style:italic; }
-    .missing .lyrics { color:#c9d3e2; font-size:clamp(30px, 5vw, 64px); }
-    .empty { color:var(--muted); }
-    .watermark { position:fixed; right:22px; bottom:16px; z-index:4; color:var(--watermark); font-size:12px; font-weight:800; letter-spacing:.02em; text-align:right; }
-    @media print {
-      .deck-bar { display:none; }
-      .slide { min-height:100vh; page-break-after:always; break-after:page; }
-    }
-  </style>
-</head>
-<body>
-  <div class="deck-bar"><span>${escapeHtml(title)}</span><span>${escapeHtml(date)} · ${slideCount} slides</span></div>
-  ${renderedSlides.map((slide, index) => `
-    <section class="slide ${escapeHtml(slide.kind || "lyrics")}">
-      <div class="content">
-        <div class="meta">${escapeHtml(slide.meta || `${index + 1} / ${slideCount}`)}</div>
-        <h1>${escapeHtml(slide.title || title)}</h1>
-        <div class="lyrics">${(slide.lines || []).map((line) => `<div>${escapeHtml(line)}</div>`).join("") || `<div class="empty">Instrumental</div>`}</div>
-        <div class="watermark">Created with LINEUP<br>Songleading.net</div>
-      </div>
-    </section>
-  `).join("")}
-  <script>
-    const slides = Array.from(document.querySelectorAll(".slide"));
-    let current = 0;
-    function go(next) {
-      current = Math.max(0, Math.min(slides.length - 1, next));
-      slides[current]?.scrollIntoView({ behavior: "smooth" });
-    }
-    document.addEventListener("keydown", (event) => {
-      if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(event.key)) { event.preventDefault(); go(current + 1); }
-      if (["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key)) { event.preventDefault(); go(current - 1); }
-      if (event.key === "Home") go(0);
-      if (event.key === "End") go(slides.length - 1);
-    });
-  </script>
-</body>
-</html>`;
+async function clearSlidesExportImage() {
+  slidesExportPendingImage = "";
+  if (els.slidesExportImage) els.slidesExportImage.value = "";
+  if (els.slidesExportPresetSelect) els.slidesExportPresetSelect.value = "";
+  state.show.slideExportTheme = normalizeSlideExportTheme({ ...(state.show.slideExportTheme || {}), image: "", presetName: "" });
+  saveState();
+  await renderSlidesExportPreview();
+  toast("Background image cleared.");
 }
 
 async function imageInputToDataUrl(input) {
@@ -1329,12 +2739,708 @@ async function imageInputToDataUrl(input) {
   });
 }
 
+function getSlidesExportOptions() {
+  return {
+    showTitles: Boolean(els.slidesShowTitlesToggle?.checked),
+    showCredits: Boolean(els.slidesShowCreditsToggle?.checked),
+    showCount: Boolean(els.slidesShowCountToggle?.checked),
+  };
+}
+
+function slideCanvasPalette(theme = {}, kind = "lyrics") {
+  const normalized = normalizeSlideExportTheme(theme);
+  const bright = normalized.name === "bright" && !normalized.image;
+  return {
+    ink: bright ? "#101827" : "#f8fbff",
+    muted: bright ? "rgba(15, 23, 42, 0.58)" : "rgba(248, 251, 255, 0.64)",
+    note: bright ? "#7c4a02" : "#ffe1a3",
+    missing: bright ? "#475569" : "#c9d3e2",
+    watermark: bright ? "rgba(15, 23, 42, 0.42)" : "rgba(248, 251, 255, 0.46)",
+    shadow: bright || kind === "missing" ? "rgba(255, 255, 255, 0)" : "rgba(0, 0, 0, 0.52)",
+  };
+}
+
+function fillSlideGradient(context, width, height, stops) {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  stops.forEach(([offset, color]) => gradient.addColorStop(offset, color));
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+}
+
+function fillSlideRadial(context, width, height, x, y, radius, stops) {
+  const gradient = context.createRadialGradient(width * x, height * y, 0, width * x, height * y, width * radius);
+  stops.forEach(([offset, color]) => gradient.addColorStop(offset, color));
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+}
+
+function canvasRoundRectPath(context, x, y, width, height, radius) {
+  if (typeof context.roundRect === "function") {
+    context.roundRect(x, y, width, height, radius);
+    return;
+  }
+  const r = Math.min(radius, width / 2, height / 2);
+  context.moveTo(x + r, y);
+  context.lineTo(x + width - r, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + r);
+  context.lineTo(x + width, y + height - r);
+  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  context.lineTo(x + r, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+}
+
+function drawCanvasEllipse(context, x, y, radiusX, radiusY, color) {
+  context.save();
+  context.fillStyle = color;
+  context.beginPath();
+  context.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawCanvasFlame(context, x, y, scale = 1) {
+  const drawShape = (offsetY, width, height, color) => {
+    context.save();
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(x, y + offsetY - height);
+    context.bezierCurveTo(x - width, y + offsetY - height * 0.48, x - width * 0.66, y + offsetY, x, y + offsetY);
+    context.bezierCurveTo(x + width * 0.7, y + offsetY, x + width, y + offsetY - height * 0.5, x, y + offsetY - height);
+    context.fill();
+    context.restore();
+  };
+  drawShape(0, 30 * scale, 88 * scale, "rgba(255, 119, 34, 0.96)");
+  drawShape(-4 * scale, 18 * scale, 62 * scale, "rgba(255, 218, 112, 0.94)");
+  drawShape(-8 * scale, 8 * scale, 36 * scale, "rgba(255, 250, 210, 0.9)");
+}
+
+function drawShabbatCandleScene(context, width, height) {
+  fillSlideGradient(context, width, height, [[0, "#160b05"], [0.58, "#06070b"], [1, "#030407"]]);
+  fillSlideRadial(context, width, height, 0.5, 0.66, 0.5, [[0, "rgba(255, 163, 67, 0.24)"], [1, "rgba(255, 163, 67, 0)"]]);
+  drawCanvasEllipse(context, width * 0.5, height * 0.85, width * 0.42, height * 0.12, "rgba(85, 46, 22, 0.48)");
+  const candles = [width * 0.43, width * 0.57];
+  candles.forEach((x, index) => {
+    const candleHeight = height * (index ? 0.25 : 0.29);
+    const candleWidth = width * 0.045;
+    const y = height * 0.72;
+    const body = context.createLinearGradient(x - candleWidth / 2, y - candleHeight, x + candleWidth / 2, y);
+    body.addColorStop(0, "#fff8dc");
+    body.addColorStop(0.55, "#f2d59b");
+    body.addColorStop(1, "#b98743");
+    context.fillStyle = body;
+    context.beginPath();
+    canvasRoundRectPath(context, x - candleWidth / 2, y - candleHeight, candleWidth, candleHeight, candleWidth * 0.34);
+    context.fill();
+    context.fillStyle = "rgba(63, 37, 17, 0.34)";
+    context.fillRect(x - candleWidth * 0.05, y - candleHeight - 4, candleWidth * 0.1, 16);
+    fillSlideRadial(context, width, height, x / width, (y - candleHeight - 48) / height, 0.18, [[0, "rgba(255, 218, 132, 0.52)"], [1, "rgba(255, 218, 132, 0)"]]);
+    drawCanvasFlame(context, x, y - candleHeight + 2, 0.42);
+  });
+  fillSlideGradient(context, width, height, [[0, "rgba(2, 5, 12, 0.2)"], [0.55, "rgba(2, 5, 12, 0.18)"], [1, "rgba(2, 5, 12, 0.62)"]]);
+}
+
+function drawCampfireScene(context, width, height) {
+  fillSlideGradient(context, width, height, [[0, "#061328"], [0.58, "#111118"], [1, "#090403"]]);
+  fillSlideRadial(context, width, height, 0.5, 0.88, 0.48, [[0, "rgba(255, 124, 34, 0.42)"], [1, "rgba(255, 124, 34, 0)"]]);
+  for (let index = 0; index < 22; index += 1) {
+    const x = width * (0.2 + ((index * 37) % 60) / 100);
+    const y = height * (0.18 + ((index * 23) % 52) / 100);
+    drawCanvasEllipse(context, x, y, 2 + (index % 3), 2 + (index % 2), "rgba(255, 201, 104, 0.38)");
+  }
+  context.save();
+  context.translate(width * 0.5, height * 0.82);
+  context.rotate(-0.18);
+  context.fillStyle = "#5a2f18";
+  context.beginPath();
+  canvasRoundRectPath(context, -170, 38, 340, 38, 18);
+  context.fill();
+  context.restore();
+  context.save();
+  context.translate(width * 0.5, height * 0.82);
+  context.rotate(0.18);
+  context.fillStyle = "#78401e";
+  context.beginPath();
+  canvasRoundRectPath(context, -165, 42, 330, 40, 18);
+  context.fill();
+  context.restore();
+  drawCanvasFlame(context, width * 0.43, height * 0.82, 1.05);
+  drawCanvasFlame(context, width * 0.51, height * 0.82, 1.28);
+  drawCanvasFlame(context, width * 0.59, height * 0.82, 0.95);
+  fillSlideGradient(context, width, height, [[0, "rgba(2, 5, 12, 0.12)"], [0.5, "rgba(2, 5, 12, 0.18)"], [1, "rgba(2, 5, 12, 0.54)"]]);
+}
+
+function drawBrightPaperScene(context, width, height, kind) {
+  fillSlideGradient(context, width, height, [[0, "#fffaf2"], [1, kind === "note" ? "#fff4d6" : "#eef7f5"]]);
+  fillSlideRadial(context, width, height, 0.16, 0.12, 0.34, [[0, "rgba(91, 146, 255, 0.14)"], [1, "rgba(91, 146, 255, 0)"]]);
+  fillSlideRadial(context, width, height, 0.86, 0.14, 0.26, [[0, "rgba(243, 174, 34, 0.18)"], [1, "rgba(243, 174, 34, 0)"]]);
+  context.save();
+  context.strokeStyle = "rgba(15, 23, 42, 0.045)";
+  context.lineWidth = 1;
+  for (let x = width * 0.08; x < width; x += 70) {
+    context.beginPath();
+    context.moveTo(x, height * 0.08);
+    context.lineTo(x - width * 0.16, height);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawPresetSlideBackground(context, width, height, theme = {}, kind = "lyrics") {
+  const normalized = normalizeSlideExportTheme(theme);
+  if (normalized.name === "bright") {
+    drawBrightPaperScene(context, width, height, kind);
+    return;
+  }
+  if (normalized.name === "shabbat") {
+    drawShabbatCandleScene(context, width, height);
+    return;
+  }
+  if (normalized.name === "campfire") {
+    drawCampfireScene(context, width, height);
+    return;
+  }
+  if (kind === "note") {
+    fillSlideGradient(context, width, height, [[0, "#1b1205"], [1, "#050403"]]);
+    fillSlideRadial(context, width, height, 0.2, 0.15, 0.34, [[0, "rgba(245, 181, 43, 0.22)"], [1, "rgba(245, 181, 43, 0)"]]);
+    return;
+  }
+  if (kind === "missing") {
+    fillSlideGradient(context, width, height, [[0, "#111820"], [1, "#050607"]]);
+    fillSlideRadial(context, width, height, 0.5, 0.2, 0.36, [[0, "rgba(155, 165, 170, 0.16)"], [1, "rgba(155, 165, 170, 0)"]]);
+    return;
+  }
+  fillSlideGradient(context, width, height, [[0, "#07111f"], [1, "#020407"]]);
+  fillSlideRadial(context, width, height, 0.18, 0.12, 0.34, [[0, "rgba(91, 146, 255, 0.22)"], [1, "rgba(91, 146, 255, 0)"]]);
+}
+
+function loadImageForCanvas(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(new Error("Could not load slide background image.")), { once: true });
+    image.src = src;
+  });
+}
+
+async function drawSlideBackground(context, width, height, theme = {}, kind = "lyrics") {
+  const normalized = normalizeSlideExportTheme(theme);
+  if (!normalized.image) {
+    drawPresetSlideBackground(context, width, height, normalized, kind);
+    return;
+  }
+  try {
+    const image = await loadImageForCanvas(normalized.image);
+    const crop = sanitizeSlideExportCrop(normalized.crop);
+    const baseScale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+    const scale = baseScale * (crop.zoom / 100);
+    const drawnWidth = image.naturalWidth * scale;
+    const drawnHeight = image.naturalHeight * scale;
+    const x = (width - drawnWidth) * (crop.x / 100);
+    const y = (height - drawnHeight) * (crop.y / 100);
+    context.fillStyle = "#05070b";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, x, y, drawnWidth, drawnHeight);
+    const overlay = context.createLinearGradient(0, 0, 0, height);
+    overlay.addColorStop(0, "rgba(3, 7, 18, 0.50)");
+    overlay.addColorStop(1, "rgba(3, 7, 18, 0.66)");
+    context.fillStyle = overlay;
+    context.fillRect(0, 0, width, height);
+  } catch {
+    drawPresetSlideBackground(context, width, height, normalized, kind);
+  }
+}
+
+function slideCanvasFont(fontSize, italic = false) {
+  return `${italic ? "italic " : ""}900 ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
+}
+
+function wrapCanvasLine(context, line, maxWidth) {
+  const words = String(line || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const wrapped = [];
+  let current = "";
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || context.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      wrapped.push(current);
+      current = word;
+    }
+  });
+  if (current) wrapped.push(current);
+  return wrapped;
+}
+
+function slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic = false) {
+  context.font = slideCanvasFont(fontSize, italic);
+  const wrappedLines = lines.flatMap((line) => wrapCanvasLine(context, line, maxWidth));
+  const lineHeight = fontSize * 1.08;
+  const gapHeight = Math.max(0, wrappedLines.length - 1) * fontSize * 0.18;
+  const totalHeight = wrappedLines.length * lineHeight + gapHeight;
+  const widest = wrappedLines.reduce((max, line) => Math.max(max, context.measureText(line).width), 0);
+  return { wrappedLines, lineHeight, gapHeight, totalHeight, widest, fontSize };
+}
+
+function fitSlideCanvasText(context, lines, maxWidth, maxHeight, kind) {
+  const italic = kind === "note";
+  const maxFont = kind === "missing" ? 72 : kind === "note" ? 82 : 92;
+  const minFont = 30;
+  let fallback = slideCanvasTextLayout(context, lines, minFont, maxWidth, italic);
+  for (let fontSize = maxFont; fontSize >= minFont; fontSize -= 2) {
+    const layout = slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic);
+    if (layout.totalHeight <= maxHeight && layout.widest <= maxWidth) return layout;
+    fallback = layout.fontSize < fallback.fontSize ? layout : fallback;
+  }
+  return fallback;
+}
+
+function drawCanvasFittedText(context, text, x, y, maxWidth) {
+  let value = String(text || "");
+  if (context.measureText(value).width <= maxWidth) {
+    context.fillText(value, x, y);
+    return;
+  }
+  while (value.length > 1 && context.measureText(`${value}...`).width > maxWidth) {
+    value = value.slice(0, -1).trimEnd();
+  }
+  context.fillText(`${value || text.slice(0, 1)}...`, x, y);
+}
+
+function drawSlideWatermark(context, width, height, palette) {
+  context.save();
+  const markColor = palette.watermark;
+  const right = width - 30;
+  const bottom = height - 22;
+  context.globalAlpha = 1;
+  context.textBaseline = "alphabetic";
+  context.textAlign = "right";
+  context.fillStyle = markColor;
+  context.font = "800 10px Inter, Arial, Helvetica, sans-serif";
+  context.fillText("Created with", right, bottom - 22);
+
+  const logoWidth = 158;
+  const logoHeight = 26;
+  const iconSize = 23;
+  const x = right - logoWidth;
+  const y = bottom - logoHeight + 2;
+  context.strokeStyle = markColor;
+  context.lineWidth = 1.1;
+  context.beginPath();
+  canvasRoundRectPath(context, x, y, iconSize, iconSize, 6);
+  context.stroke();
+  context.font = "900 15px Inter, Arial, Helvetica, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("♪", x + iconSize / 2, y + iconSize / 2);
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.font = "900 12px Inter, Arial, Helvetica, sans-serif";
+  context.fillText("Songleading.net", x + 31, y + 11);
+  context.font = "900 5.5px Inter, Arial, Helvetica, sans-serif";
+  context.letterSpacing = "1px";
+  context.fillText("BY BARAK MALICHI", x + 31, y + 21);
+  context.restore();
+}
+
+async function renderSlideToCanvas(slide, theme = {}, options = {}) {
+  const width = 1920;
+  const height = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const kind = ["note", "missing"].includes(slide.kind) ? slide.kind : "lyrics";
+  const palette = slideCanvasPalette(theme, kind);
+  const rawLines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
+  const lines = rawLines.map((line) => String(line || "").trim()).filter(Boolean);
+
+  await drawSlideBackground(context, width, height, theme, kind);
+
+  const maxWidth = width * 0.82;
+  const maxHeight = height * 0.66;
+  const layout = fitSlideCanvasText(context, lines.length ? lines : ["Instrumental"], maxWidth, maxHeight, kind);
+  const textColor = kind === "note" ? palette.note : kind === "missing" ? palette.missing : palette.ink;
+  context.save();
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = textColor;
+  context.font = slideCanvasFont(layout.fontSize, kind === "note");
+  context.shadowColor = palette.shadow;
+  context.shadowBlur = palette.shadow === "rgba(255, 255, 255, 0)" ? 0 : 22;
+  context.shadowOffsetY = palette.shadow === "rgba(255, 255, 255, 0)" ? 0 : 4;
+  let y = height / 2 - layout.totalHeight / 2 + layout.lineHeight / 2;
+  layout.wrappedLines.forEach((line) => {
+    context.fillText(line, width / 2, y);
+    y += layout.lineHeight + layout.fontSize * 0.18;
+  });
+  context.restore();
+
+  if (options.showTitles && slide.title) {
+    context.save();
+    context.fillStyle = palette.muted;
+    context.font = "900 31px Inter, Arial, Helvetica, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "top";
+    drawCanvasFittedText(context, slide.title, width / 2, 34, width * 0.72);
+    context.restore();
+  }
+
+  if (options.showCount) {
+    context.save();
+    context.fillStyle = palette.muted;
+    context.font = "900 24px Inter, Arial, Helvetica, sans-serif";
+    context.textAlign = "right";
+    context.textBaseline = "top";
+    context.fillText(`${(options.slideIndex || 0) + 1} out of ${options.slideTotal || 1}`, width - 44, 38);
+    context.restore();
+  }
+
+  if (options.showCredits && slide.credits) {
+    context.save();
+    context.fillStyle = palette.muted;
+    context.font = "800 22px Inter, Arial, Helvetica, sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "bottom";
+    drawCanvasFittedText(context, slide.credits, 44, height - 36, width * 0.46);
+    context.restore();
+  }
+
+  context.save();
+  drawSlideWatermark(context, width, height, palette);
+  context.restore();
+
+  return canvas;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(String(dataUrl || ""));
+  if (!match) throw new Error("Could not render slide image.");
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return { bytes, mime: match[1] };
+}
+
+async function buildSlidesPptxBlob(slides, theme = {}, options = {}) {
+  const renderedSlides = slides.length ? slides : [{
+    kind: "missing",
+    title: "No slides",
+    lines: ["Add songs with slides before exporting."],
+    meta: "",
+  }];
+  const entries = basePptxEntries(renderedSlides.length, state.show.name || "Lineup slides");
+
+  for (let index = 0; index < renderedSlides.length; index += 1) {
+    const canvas = await renderSlideToCanvas(renderedSlides[index], theme, {
+      ...options,
+      slideIndex: index,
+      slideTotal: renderedSlides.length,
+    });
+    const { bytes } = dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.92));
+    const slideNumber = index + 1;
+    entries.push({ name: `ppt/slides/slide${slideNumber}.xml`, data: textBytes(pptxSlideXml(slideNumber)) });
+    entries.push({ name: `ppt/slides/_rels/slide${slideNumber}.xml.rels`, data: textBytes(pptxSlideRelsXml(`slide${slideNumber}.jpg`)) });
+    entries.push({ name: `ppt/media/slide${slideNumber}.jpg`, data: bytes });
+  }
+
+  return buildStoredZipBlob(entries, pptxMimeType);
+}
+
+function basePptxEntries(slideCount, title) {
+  return [
+    { name: "[Content_Types].xml", data: textBytes(pptxContentTypesXml(slideCount)) },
+    { name: "_rels/.rels", data: textBytes(pptxRootRelsXml()) },
+    { name: "docProps/core.xml", data: textBytes(pptxCoreXml(title)) },
+    { name: "docProps/app.xml", data: textBytes(pptxAppXml(slideCount)) },
+    { name: "ppt/presentation.xml", data: textBytes(pptxPresentationXml(slideCount)) },
+    { name: "ppt/_rels/presentation.xml.rels", data: textBytes(pptxPresentationRelsXml(slideCount)) },
+    { name: "ppt/slideMasters/slideMaster1.xml", data: textBytes(pptxSlideMasterXml()) },
+    { name: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: textBytes(pptxSlideMasterRelsXml()) },
+    { name: "ppt/slideLayouts/slideLayout1.xml", data: textBytes(pptxSlideLayoutXml()) },
+    { name: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: textBytes(pptxSlideLayoutRelsXml()) },
+    { name: "ppt/theme/theme1.xml", data: textBytes(pptxThemeXml()) },
+  ];
+}
+
+function xml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&apos;",
+  })[char]);
+}
+
+function pptxContentTypesXml(slideCount) {
+  const slideOverrides = Array.from({ length: slideCount }, (_, index) => (
+    `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`
+  )).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  ${slideOverrides}
+</Types>`;
+}
+
+function pptxRootRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function pptxCoreXml(title) {
+  const now = new Date().toISOString();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${xml(title)}</dc:title>
+  <dc:creator>Songleading.net</dc:creator>
+  <cp:lastModifiedBy>Songleading.net</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`;
+}
+
+function pptxAppXml(slideCount) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Songleading.net</Application>
+  <PresentationFormat>On-screen Show (16:9)</PresentationFormat>
+  <Slides>${slideCount}</Slides>
+  <ScaleCrop>false</ScaleCrop>
+</Properties>`;
+}
+
+function pptxPresentationXml(slideCount) {
+  const slideIds = Array.from({ length: slideCount }, (_, index) => (
+    `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`
+  )).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+  <p:sldIdLst>${slideIds}</p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000" type="wide"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+  <p:defaultTextStyle/>
+</p:presentation>`;
+}
+
+function pptxPresentationRelsXml(slideCount) {
+  const slideRels = Array.from({ length: slideCount }, (_, index) => (
+    `<Relationship Id="rId${index + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`
+  )).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+  ${slideRels}
+</Relationships>`;
+}
+
+function pptxSlideXml(slideNumber) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      <p:pic>
+        <p:nvPicPr><p:cNvPr id="2" name="Slide ${slideNumber}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>
+        <p:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="6858000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+      </p:pic>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
+}
+
+function pptxSlideRelsXml(imageName) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${xml(imageName)}"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
+}
+
+function pptxSlideMasterXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+  <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+  <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
+</p:sldMaster>`;
+}
+
+function pptxSlideMasterRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
+</Relationships>`;
+}
+
+function pptxSlideLayoutXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
+  <p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sldLayout>`;
+}
+
+function pptxSlideLayoutRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>`;
+}
+
+function pptxThemeXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Songleading">
+  <a:themeElements>
+    <a:clrScheme name="Songleading"><a:dk1><a:srgbClr val="05070B"/></a:dk1><a:lt1><a:srgbClr val="F8FBFF"/></a:lt1><a:dk2><a:srgbClr val="07111F"/></a:dk2><a:lt2><a:srgbClr val="FFFDF7"/></a:lt2><a:accent1><a:srgbClr val="5B92FF"/></a:accent1><a:accent2><a:srgbClr val="36C3A1"/></a:accent2><a:accent3><a:srgbClr val="F5B52B"/></a:accent3><a:accent4><a:srgbClr val="7C8CFF"/></a:accent4><a:accent5><a:srgbClr val="C9D3E2"/></a:accent5><a:accent6><a:srgbClr val="101827"/></a:accent6><a:hlink><a:srgbClr val="2563EB"/></a:hlink><a:folHlink><a:srgbClr val="7C3AED"/></a:folHlink></a:clrScheme>
+    <a:fontScheme name="Songleading"><a:majorFont><a:latin typeface="Arial"/></a:majorFont><a:minorFont><a:latin typeface="Arial"/></a:minorFont></a:fontScheme>
+    <a:fmtScheme name="Songleading"><a:fillStyleLst><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+  </a:themeElements>
+</a:theme>`;
+}
+
+function littleEndianBytes(value, byteCount) {
+  const bytes = new Uint8Array(byteCount);
+  let remaining = value >>> 0;
+  for (let index = 0; index < byteCount; index += 1) {
+    bytes[index] = remaining & 0xff;
+    remaining >>>= 8;
+  }
+  return bytes;
+}
+
+function zipDosTime(date = new Date()) {
+  return ((date.getHours() & 0x1f) << 11) | ((date.getMinutes() & 0x3f) << 5) | ((Math.floor(date.getSeconds() / 2)) & 0x1f);
+}
+
+function zipDosDate(date = new Date()) {
+  return (((date.getFullYear() - 1980) & 0x7f) << 9) | (((date.getMonth() + 1) & 0x0f) << 5) | (date.getDate() & 0x1f);
+}
+
+let zipCrcTable = null;
+function crc32(bytes) {
+  if (!zipCrcTable) {
+    zipCrcTable = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+      }
+      zipCrcTable[index] = value >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = zipCrcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function concatByteChunks(chunks) {
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return output;
+}
+
+function buildStoredZipBlob(entries, mimeType = "application/zip") {
+  const fileChunks = [];
+  const centralChunks = [];
+  const now = new Date();
+  let offset = 0;
+  entries.forEach((entry) => {
+    const nameBytes = textBytes(entry.name);
+    const data = entry.data instanceof Uint8Array ? entry.data : textBytes(String(entry.data || ""));
+    const crc = crc32(data);
+    const localHeader = concatByteChunks([
+      littleEndianBytes(0x04034b50, 4),
+      littleEndianBytes(20, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(zipDosTime(now), 2),
+      littleEndianBytes(zipDosDate(now), 2),
+      littleEndianBytes(crc, 4),
+      littleEndianBytes(data.length, 4),
+      littleEndianBytes(data.length, 4),
+      littleEndianBytes(nameBytes.length, 2),
+      littleEndianBytes(0, 2),
+      nameBytes,
+    ]);
+    fileChunks.push(localHeader, data);
+    centralChunks.push(concatByteChunks([
+      littleEndianBytes(0x02014b50, 4),
+      littleEndianBytes(20, 2),
+      littleEndianBytes(20, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(zipDosTime(now), 2),
+      littleEndianBytes(zipDosDate(now), 2),
+      littleEndianBytes(crc, 4),
+      littleEndianBytes(data.length, 4),
+      littleEndianBytes(data.length, 4),
+      littleEndianBytes(nameBytes.length, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 2),
+      littleEndianBytes(0, 4),
+      littleEndianBytes(offset, 4),
+      nameBytes,
+    ]));
+    offset += localHeader.length + data.length;
+  });
+  const centralDirectory = concatByteChunks(centralChunks);
+  const endRecord = concatByteChunks([
+    littleEndianBytes(0x06054b50, 4),
+    littleEndianBytes(0, 2),
+    littleEndianBytes(0, 2),
+    littleEndianBytes(entries.length, 2),
+    littleEndianBytes(entries.length, 2),
+    littleEndianBytes(centralDirectory.length, 4),
+    littleEndianBytes(offset, 4),
+    littleEndianBytes(0, 2),
+  ]);
+  return new Blob([concatByteChunks([...fileChunks, centralDirectory, endRecord])], { type: mimeType });
+}
+
 async function exportLineupSlides(theme = {}) {
   commitShowMetaFromFields();
+  state.show.slideExportTheme = normalizeSlideExportTheme(theme);
+  const options = getSlidesExportOptions();
+  state.show.slideExportShowTitles = options.showTitles;
+  state.show.slideExportShowCredits = options.showCredits;
+  state.show.slideExportShowCount = options.showCount;
+  saveState();
   const slides = buildLineupSlideDeck();
-  const html = buildSlidesExportHtml(slides, theme);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-slides.html`, "Slides deck is ready.");
+  const blob = await buildSlidesPptxBlob(slides, state.show.slideExportTheme, options);
+  downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-slides.pptx`, "PowerPoint deck is ready.");
 }
 
 function openSlidesExportDialog() {
@@ -1343,7 +3449,13 @@ function openSlidesExportDialog() {
     return;
   }
   if (els.slidesExportImage) els.slidesExportImage.value = "";
+  if (els.slidesShowTitlesToggle) els.slidesShowTitlesToggle.checked = Boolean(state.show.slideExportShowTitles);
+  if (els.slidesShowCreditsToggle) els.slidesShowCreditsToggle.checked = Boolean(state.show.slideExportShowCredits);
+  if (els.slidesShowCountToggle) els.slidesShowCountToggle.checked = Boolean(state.show.slideExportShowCount);
+  applySlidesExportThemeControls(state.show.slideExportTheme || defaultSlideExportTheme);
   renderSlidesPresetOptions();
+  slidesExportPreviewIndex = 0;
+  if (els.exportDialog?.open) closeDialog(els.exportDialog);
   openDialog(els.slidesExportDialog);
   renderSlidesExportPreview();
 }
@@ -1351,7 +3463,8 @@ function openSlidesExportDialog() {
 async function submitSlidesExport(event) {
   event.preventDefault();
   try {
-    await exportLineupSlides(await currentSlidesExportTheme());
+    await persistCurrentSlidesExportTheme();
+    await exportLineupSlides(state.show.slideExportTheme);
     closeDialog(els.slidesExportDialog);
   } catch (error) {
     toast(error instanceof Error ? error.message : "Could not export slides.");
@@ -1406,6 +3519,10 @@ function openDialog(dialog) {
     dialog.setAttribute("open", "");
     dialog.open = true;
   }
+  window.requestAnimationFrame(() => {
+    dialog.scrollTop = 0;
+    dialog.querySelector("form, .export-dialog-inner, .slides-editor-shell")?.scrollTo?.({ top: 0 });
+  });
 }
 
 function closeDialog(dialog) {
@@ -1422,6 +3539,32 @@ function closestFromEvent(event, selector) {
   const target = event.target;
   if (target?.closest) return target.closest(selector);
   return target?.parentElement?.closest?.(selector) || null;
+}
+
+function isEditableTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function handleUndoRedoShortcut(event) {
+  const modifier = event.metaKey || event.ctrlKey;
+  if (!modifier || event.altKey) return;
+  const key = event.key.toLowerCase();
+  const redo = key === "y" || (key === "z" && event.shiftKey);
+  const undo = key === "z" && !event.shiftKey;
+  if (!undo && !redo) return;
+
+  if (els.slidesEditorDialog?.open) {
+    event.preventDefault();
+    if (redo) redoSlidesEditor();
+    else undoSlidesEditor();
+    return;
+  }
+
+  if (document.querySelector("dialog[open]") && isEditableTarget(event.target)) return;
+  if (isEditableTarget(event.target)) return;
+  event.preventDefault();
+  if (redo) redoLineup();
+  else undoLineup();
 }
 
 function render() {
@@ -1445,13 +3588,39 @@ function renderSavedShows() {
     state = normalizeState({ ...state, shows });
   }
   const visibleShows = shows.filter((show) => !isUnchangedDraftShow(show));
-  els.savedShowsList.innerHTML = visibleShows.length
-    ? visibleShows
+  const folders = Array.isArray(state.setlistFolders) ? state.setlistFolders : [];
+  const folderVisibleShows = visibleShows.filter((show) => {
+    if (!activeSetlistFolderId) return true;
+    if (activeSetlistFolderId === "unfiled") return !show.folderId;
+    return show.folderId === activeSetlistFolderId;
+  });
+  if (els.setlistFolderFilters) {
+    els.setlistFolderFilters.innerHTML = `
+      <button class="${!activeSetlistFolderId ? "active" : ""}" data-folder-filter="">All</button>
+      <button class="${activeSetlistFolderId === "unfiled" ? "active" : ""}" data-folder-filter="unfiled">Unfiled</button>
+      ${folders.map((folder) => `<button class="${activeSetlistFolderId === folder.id ? "active" : ""}" data-folder-filter="${folder.id}">${escapeHtml(folder.name)}</button>`).join("")}
+    `;
+  }
+  if (els.moveSetlistsFolder) {
+    els.moveSetlistsFolder.innerHTML = `
+      <option value="">Move selected...</option>
+      <option value="__unfiled">Unfiled</option>
+      ${folders.map((folder) => `<option value="${folder.id}">${escapeHtml(folder.name)}</option>`).join("")}
+    `;
+    els.moveSetlistsFolder.disabled = !selectedSetlistIds.size;
+  }
+  els.savedShowsList.innerHTML = folderVisibleShows.length
+    ? folderVisibleShows
     .map((show) => `
-      <button class="saved-show-chip ${show.id === state.activeShowId ? "active" : ""}" data-show-id="${show.id}">
-        <span>${escapeHtml(show.name)}</span>
-        <small>${escapeHtml(formatExportDate(show.date))}</small>
-      </button>
+      <article class="saved-show-chip ${show.id === state.activeShowId ? "active" : ""}" data-show-id="${show.id}">
+        <label class="setlist-select" aria-label="Select ${escapeHtml(show.name)}">
+          <input type="checkbox" data-select-show="${show.id}" ${selectedSetlistIds.has(show.id) ? "checked" : ""} />
+        </label>
+        <button type="button" class="saved-show-open" data-open-show="${show.id}">
+          <span>${escapeHtml(show.name)}</span>
+          <small>${escapeHtml(formatExportDate(show.date))}${show.folderId ? ` · ${escapeHtml(folders.find((folder) => folder.id === show.folderId)?.name || "Folder")}` : ""}</small>
+        </button>
+      </article>
     `)
     .join("")
     : '<div class="empty-state"><div><strong>No saved setlists yet.</strong>Change this setlist to save it.</div></div>';
@@ -1467,6 +3636,7 @@ function setSidePanelMode(mode) {
   if (els.libraryView) els.libraryView.hidden = sidePanelMode !== "library";
   if (els.showsView) els.showsView.hidden = sidePanelMode !== "shows";
   if (els.newSongButton) els.newSongButton.hidden = sidePanelMode !== "library";
+  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = sidePanelMode !== "library";
   if (els.quickAddButton) els.quickAddButton.hidden = sidePanelMode !== "library";
   els.showsTabButton?.classList.toggle("active", sidePanelMode === "shows");
 }
@@ -1494,7 +3664,7 @@ const coachSteps = [
   {
     target: () => els.songBankList?.querySelector(".bank-song") || els.songSearch,
     title: "Send songs to the setlist",
-    text: "Double-click a song or drag it into the lineup."
+    text: "Click a song or drag it into the lineup."
   },
   {
     target: () => els.exportButton,
@@ -1692,6 +3862,7 @@ function setMobileLibraryState(stateName) {
   if (els.libraryView) els.libraryView.hidden = false;
   if (els.showsView) els.showsView.hidden = true;
   if (els.newSongButton) els.newSongButton.hidden = false;
+  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
   if (els.quickAddButton) els.quickAddButton.hidden = false;
   els.showsTabButton?.classList.remove("active");
 }
@@ -1715,6 +3886,7 @@ function closeMobileLibraryDrawer() {
   if (els.libraryView) els.libraryView.hidden = false;
   if (els.showsView) els.showsView.hidden = true;
   if (els.newSongButton) els.newSongButton.hidden = false;
+  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
   if (els.quickAddButton) els.quickAddButton.hidden = false;
   els.showsTabButton?.classList.remove("active");
 }
@@ -1737,6 +3909,11 @@ function handleMobileMenuCommand(command) {
   }
   if (command === "slides") {
     setSlidePreviewOpen(!slidePreviewOpen);
+    return;
+  }
+  if (command === "theme") {
+    toggleTheme();
+    return;
   }
 }
 
@@ -1778,7 +3955,24 @@ function toggleTheme() {
   toast(`${document.documentElement.dataset.theme === "light" ? "Light" : "Dark"} mode enabled.`);
 }
 
+function activeLibraryFilterCount() {
+  return activeCategories.size + (hebrewOnly ? 1 : 0) + (bangersOnly ? 1 : 0);
+}
+
+function updateFilterToggleButton() {
+  if (!els.toggleFiltersButton) return;
+  const activeCount = activeLibraryFilterCount();
+  els.toggleFiltersButton.classList.toggle("active", libraryFiltersOpen || activeCount > 0);
+  els.toggleFiltersButton.dataset.count = activeCount ? String(activeCount) : "";
+  els.toggleFiltersButton.setAttribute("aria-expanded", String(libraryFiltersOpen));
+  els.toggleFiltersButton.setAttribute("aria-label", libraryFiltersOpen ? "Hide filters" : "Show filters");
+  els.toggleFiltersButton.title = libraryFiltersOpen ? "Hide filters" : "Filters";
+}
+
 function renderFilters() {
+  if (!els.categoryFilters) return;
+  els.categoryFilters.hidden = !libraryFiltersOpen;
+  updateFilterToggleButton();
   els.categoryFilters.innerHTML = `
     <div class="filter-group" aria-label="Song type filters">
       <div class="filter-options">
@@ -1799,67 +3993,97 @@ function renderFilters() {
   `;
 }
 
+function toggleLibraryFilters() {
+  libraryFiltersOpen = !libraryFiltersOpen;
+  renderFilters();
+}
+
+function handleHomeButtonClick(event) {
+  if (!isMobileLayout() || !els.homeButton) return;
+  if (els.homeButton.classList.contains("address-revealed")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  els.homeButton.classList.add("address-revealed");
+  els.homeButton.setAttribute("aria-label", "Open songleading.net");
+  els.homeButton.title = "Tap again to open songleading.net";
+}
+
 function renderLineup() {
   if (!state.lineup.length) {
     els.lineupRows.innerHTML = `
       <div class="empty-state">
         <div>
-          <strong>Build your lineup here.</strong>
-          Drag songs from the bank, or double-click a song to add it to the end.
+          <strong>Start this setlist with a song.</strong>
+          Search the library below or add songs from the bank. Slides and ready status will show here as you build.
           <button class="primary-button mobile-first-song-button" type="button" id="mobileAddFirstSongButton">
             Add first song
           </button>
         </div>
       </div>
     `;
+    renderLineupHealth();
     return;
   }
 
   els.lineupRows.innerHTML = state.lineup
     .map((item, index) => {
       if (item.type === "note") return renderNoteRow(item, index);
-      const song = state.songs.find((candidate) => candidate.id === item.songId);
+      const song = songForLineupItem(item);
       if (!song) return "";
-      const category = categoryFor(song.category);
+      const category = categoryFor(songCategoryNames(song));
+      const slideClass = slidesButtonClass(item);
+      const slideTitle = slidesButtonTitle(item);
+      const readyLabel = item.ready ? "Ready" : "Not ready";
+      const metaLabel = songMetaLabel(song);
       return `
-        <article class="lineup-row song-row ${draggedLineupId === item.id ? "dragging" : ""}" style="--category-color:${category.color}" data-lineup-id="${item.id}">
+        <article class="lineup-row song-row ${draggedLineupId === item.id ? "dragging" : ""}" style="--category-color:${category.color}" data-lineup-id="${item.id}" draggable="true">
           <div class="drag-handle" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"/></svg>
           </div>
           <div class="song-number">${index + 1}</div>
           <div class="song-title-wrap">
             <div class="song-text">
-              <div class="song-name">${escapeHtml(song.title)}</div>
-              ${songMetaLabel(song) ? `<div class="subline">
+              <div class="song-name-line">
+                <div class="song-name">${escapeHtml(song.title)}</div>
+                ${song.banger ? `<span class="lineup-title-banger" title="Banger">${flameIcon()}</span>` : ""}
+              </div>
+              ${song.banger || metaLabel ? `<div class="subline">
                 ${song.banger ? `<span class="banger-mark inline" title="Banger">${flameIcon()}</span>` : ""}
-                ${escapeHtml(songMetaLabel(song))}
+                ${metaLabel ? escapeHtml(metaLabel) : ""}
               </div>` : ""}
             </div>
           </div>
-          <label class="line-song-note">
-            <input value="${escapeHtml(item.note || "")}" maxlength="80" placeholder="-" onchange="setLineupNote('${item.id}', this.value)" aria-label="Notes for ${escapeHtml(song.title)}" title="Song note" />
-          </label>
-          <div class="capo-cell">
-            <select class="capo-select" data-action="capo" data-lineup-id="${item.id}" onchange="setLineupCapo('${item.id}', this.value)" aria-label="Capo for ${escapeHtml(song.title)}">
-              ${capoOptions.map((option) => `<option value="${option}" ${option === item.capo ? "selected" : ""}>${option || "-"}</option>`).join("")}
-            </select>
+          <div class="lineup-mobile-controls">
+            <label class="line-song-note">
+              <input value="${escapeHtml(item.note || "")}" maxlength="80" placeholder="-" data-action="note" data-lineup-id="${item.id}" aria-label="Notes for ${escapeHtml(song.title)}" title="Song note" />
+            </label>
+            <button class="mobile-note-button ${item.note ? "has-note" : ""}" data-action="edit-lineup-note" data-lineup-id="${item.id}" aria-label="Song note for ${escapeHtml(song.title)}" title="${item.note ? "Edit song note" : "Add song note"}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+            </button>
+            <div class="capo-cell">
+              <select class="capo-select" data-action="capo" data-lineup-id="${item.id}" aria-label="Capo for ${escapeHtml(song.title)}">
+                ${renderCapoOptions(item.capo || "", true)}
+              </select>
+            </div>
+            <div class="key-cell">
+              <select class="key-select" data-action="key" data-lineup-id="${item.id}" aria-label="Key for ${escapeHtml(song.title)}">
+                ${keys.map((key) => `<option value="${key}" ${key === (item.key || song.key) ? "selected" : ""}>${key}</option>`).join("")}
+              </select>
+            </div>
+            <button class="slides-status-button ${slideClass}" data-action="slides" data-lineup-id="${item.id}" aria-label="Slides for ${escapeHtml(song.title)}: ${slideTitle}" title="${slideTitle}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
+              <span>${escapeHtml(slideTitle)}</span>
+            </button>
+            <button class="ready-toggle ${item.ready ? "ready" : ""}" data-action="ready" data-lineup-id="${item.id}" aria-label="${readyLabel} for ${escapeHtml(song.title)}" title="${readyLabel}">
+              ${item.ready ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>' : ""}
+              <span>${readyLabel}</span>
+            </button>
           </div>
-          <div class="key-cell">
-            <select class="key-select" data-action="key" data-lineup-id="${item.id}" onchange="setLineupKey('${item.id}', this.value)" aria-label="Key for ${escapeHtml(song.title)}">
-              ${keys.map((key) => `<option value="${key}" ${key === (item.key || song.key) ? "selected" : ""}>${key}</option>`).join("")}
-            </select>
-          </div>
-          <button class="slides-status-button ${slidesButtonClass(item)}" data-action="slides" data-lineup-id="${item.id}" onclick="handleLineupAction('slides', '${item.id}', '${song.id}')" aria-label="Slides for ${escapeHtml(song.title)}: ${slidesButtonTitle(item)}" title="${slidesButtonTitle(item)}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
-          </button>
-          <button class="ready-toggle ${item.ready ? "ready" : ""}" data-action="ready" data-lineup-id="${item.id}" onclick="handleLineupAction('ready', '${item.id}', '')" aria-label="Toggle ready">
-            ${item.ready ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>' : ""}
-          </button>
           <div class="row-icon-actions">
-            <button class="icon-action" data-action="info" data-song-id="${song.id}" onclick="handleLineupAction('info', '${item.id}', '${song.id}')" aria-label="Edit ${escapeHtml(song.title)}" title="Edit song">
+            <button class="icon-action" data-action="info" data-song-id="${song.id}" aria-label="Edit ${escapeHtml(song.title)}" title="Edit song">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
             </button>
-            <button class="icon-action danger" data-action="remove" data-lineup-id="${item.id}" onclick="handleLineupAction('remove', '${item.id}', '')" aria-label="Remove ${escapeHtml(song.title)}" title="Remove">
+            <button class="icon-action danger" data-action="remove" data-lineup-id="${item.id}" aria-label="Remove ${escapeHtml(song.title)}" title="Remove">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>
           </div>
@@ -1867,11 +4091,12 @@ function renderLineup() {
       `;
     })
     .join("");
+  renderLineupHealth();
 }
 
 function renderNoteRow(item, index) {
   return `
-    <article class="lineup-row note-row ${draggedLineupId === item.id ? "dragging" : ""}" data-lineup-id="${item.id}">
+    <article class="lineup-row note-row ${draggedLineupId === item.id ? "dragging" : ""}" data-lineup-id="${item.id}" draggable="true">
       <div class="drag-handle" role="button" tabindex="0" aria-label="Drag to reorder" title="Drag to reorder">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"/></svg>
       </div>
@@ -1881,10 +4106,10 @@ function renderNoteRow(item, index) {
         <div class="note-text">${escapeHtml(item.text)}</div>
       </div>
       <div class="note-inline-actions">
-        <button class="icon-action" data-action="edit-note" data-lineup-id="${item.id}" onclick="handleLineupAction('edit-note', '${item.id}', '')" aria-label="Edit note" title="Edit note">
+        <button class="icon-action" data-action="edit-note" data-lineup-id="${item.id}" aria-label="Edit note" title="Edit note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
         </button>
-        <button class="icon-action danger" data-action="remove" data-lineup-id="${item.id}" onclick="handleLineupAction('remove', '${item.id}', '')" aria-label="Remove note" title="Remove">
+        <button class="icon-action danger" data-action="remove" data-lineup-id="${item.id}" aria-label="Remove note" title="Remove">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
         </button>
       </div>
@@ -1895,12 +4120,12 @@ function renderNoteRow(item, index) {
 function renderSongBank() {
   const librarySearch = parseLibrarySearch(searchTerm);
   const filtered = state.songs
-    .filter((song) => !activeCategories.size || activeCategories.has(normalizeCategoryName(song.category)))
+    .filter((song) => !activeCategories.size || songCategoryNames(song).some((category) => activeCategories.has(category)))
     .filter((song) => !bangersOnly || song.banger)
     .filter((song) => !hebrewOnly || song.hebrew)
     .filter((song) => !librarySearch.hebrewOnly || song.hebrew)
     .filter((song) => {
-      const haystack = `${song.title} ${normalizeCategoryName(song.category)} ${tagString(song.tags)}`.toLowerCase();
+      const haystack = `${song.title} ${songCategoryNames(song).join(" ")} ${tagString(song.tags)}`.toLowerCase();
       return !librarySearch.text || haystack.includes(librarySearch.text);
     })
     .sort((a, b) => sortAsc ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title));
@@ -1915,24 +4140,27 @@ function renderSongBank() {
 
   els.songBankList.innerHTML = filtered
     .map((song) => {
-      const category = categoryFor(song.category);
+      const category = categoryFor(songCategoryNames(song));
+      const addedCount = state.lineup.filter((item) => item.type === "song" && item.songId === song.id).length;
+      const alreadyAdded = addedCount > 0;
+      const addedTitle = addedCount > 1 ? `Added ${addedCount} times to this setlist` : "Already in this setlist";
       return `
-        <article class="bank-song ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}" draggable="true">
-          <button class="bank-add-button" type="button" data-action="add-bank" data-song-id="${song.id}" aria-label="Double-click to add ${escapeHtml(song.title)} to lineup" title="Double-click to add">
+        <article class="bank-song ${alreadyAdded ? "is-in-lineup" : ""} ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}" draggable="true" role="button" tabindex="0" aria-label="${alreadyAdded ? `${addedTitle}. Click to add again` : "Add"} ${escapeHtml(song.title)} to lineup" title="${alreadyAdded ? addedTitle : "Click to add to lineup"}">
             <span class="bank-song-main">
+              ${alreadyAdded ? `<span class="bank-added-badge" title="${addedTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>${addedCount > 1 ? `<span>${addedCount}</span>` : ""}</span>` : ""}
               <span class="song-name">${escapeHtml(song.title)}</span>
               ${song.hebrew ? `<span class="hebrew-badge" title="Contains Hebrew">He</span>` : ""}
               ${normalizeTags(song.tags).length ? `<span class="bank-tags">${normalizeTags(song.tags).slice(0, 3).map((tag) => `#${escapeHtml(tag)}`).join(" ")}</span>` : ""}
             </span>
-          </button>
-          <span class="bank-meta">${song.key}</span>
           <button class="banger-toggle ${song.banger ? "active" : ""}" data-action="toggle-banger" data-song-id="${song.id}" aria-label="${song.banger ? "Remove banger mark" : "Mark as banger"}" title="${song.banger ? "Remove banger mark" : "Mark as banger"}">
             ${flameIcon()}
           </button>
           <button class="slides-status-button bank-slides-button ${slidesButtonClass(song)}" data-action="slides" data-song-id="${song.id}" aria-label="Slides for ${escapeHtml(song.title)}: ${slidesButtonTitle(song)}" title="${slidesButtonTitle(song)}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
           </button>
-          <button class="more-button" data-action="edit-bank" data-song-id="${song.id}" aria-label="Edit ${escapeHtml(song.title)}">...</button>
+          <button class="icon-action bank-edit-button" data-action="edit-bank" data-song-id="${song.id}" aria-label="Edit ${escapeHtml(song.title)}" title="Edit song">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          </button>
         </article>
       `;
     })
@@ -1942,7 +4170,7 @@ function renderSongBank() {
 function populateFormOptions() {
   els.songCategoryButtons.innerHTML = categories
     .map((category) => `
-      <button class="category-choice-button" type="button" data-song-category="${category.name}" style="--chip-color:${category.color}" role="radio" aria-checked="false">
+      <button class="category-choice-button" type="button" data-song-category="${category.name}" style="--chip-color:${category.color}" role="checkbox" aria-checked="false">
         ${category.name}
       </button>
     `)
@@ -1953,28 +4181,43 @@ function populateFormOptions() {
 
 function setSongCategoryChoice(categoryName) {
   const category = normalizeCategoryName(categoryName);
-  const nextCategory = els.songCategory.value === category ? "" : category;
-  els.songCategory.value = nextCategory;
+  if (!category) return;
+  const selectedCategories = new Set(normalizeSongCategories(els.songCategory.value));
+  if (selectedCategories.has(category)) selectedCategories.delete(category);
+  else selectedCategories.add(category);
+  setSongCategoryChoices([...selectedCategories]);
+}
+
+function setSongCategoryChoices(categoryNames) {
+  els.songCategory.value = normalizeSongCategories(categoryNames).join("|");
+  syncSongCategoryButtons();
+}
+
+function syncSongCategoryButtons() {
+  const selectedCategories = new Set(normalizeSongCategories(els.songCategory.value));
   els.songCategoryButtons.querySelectorAll("[data-song-category]").forEach((button) => {
-    const active = button.dataset.songCategory === nextCategory;
+    const active = selectedCategories.has(button.dataset.songCategory);
     button.classList.toggle("active", active);
     button.setAttribute("aria-checked", String(active));
   });
 }
 
 function openSongDialog(song = null) {
+  songDialogMode = "library";
   els.songForm.reset();
   els.songId.value = song?.id || "";
   els.dialogMode.textContent = song ? "Edit" : "New";
   els.dialogTitle.textContent = song ? "Edit Song" : "Create New Song";
   els.deleteSongButton.hidden = !song;
+  if (els.addOneTimeSongButton) els.addOneTimeSongButton.hidden = Boolean(song);
+  if (els.saveSongButton) els.saveSongButton.querySelector("span").textContent = "Save";
   els.songTitle.value = song?.title || "";
-  els.songCategory.value = "";
-  setSongCategoryChoice(song?.category || "");
+  setSongCategoryChoices(song ? songCategoryNames(song) : []);
   els.songKey.value = song?.key || "C";
   els.songCapo.value = song?.capo || "";
   els.songDuration.value = song?.duration || "";
   els.songHebrew.checked = song ? Boolean(song.hebrew) : false;
+  els.songBanger.checked = song ? Boolean(song.banger) : false;
   els.songCredits.value = song?.credits || "";
   els.songTags.value = tagString(song?.tags || []);
   els.songNotes.value = song?.notes || "";
@@ -1983,24 +4226,63 @@ function openSongDialog(song = null) {
   setTimeout(() => els.songTitle.focus(), 50);
 }
 
-function upsertSong(event) {
-  event.preventDefault();
-  const song = {
-    id: els.songId.value || makeId("song"),
+function openOneTimeSongDialog(item = null) {
+  songDialogMode = "one-time";
+  const song = item?.oneTimeSong ? normalizeOneTimeSong(item.oneTimeSong) : null;
+  els.songForm.reset();
+  els.songId.value = item?.id || "";
+  els.dialogMode.textContent = item ? "Setlist" : "One-time";
+  els.dialogTitle.textContent = item ? "Edit One-Time Song" : "Add One-Time Song";
+  els.deleteSongButton.hidden = true;
+  if (els.addOneTimeSongButton) els.addOneTimeSongButton.hidden = true;
+  if (els.saveSongButton) els.saveSongButton.querySelector("span").textContent = item ? "Save" : "Add";
+  els.songTitle.value = song?.title || "";
+  setSongCategoryChoices(song ? songCategoryNames(song) : []);
+  els.songKey.value = song?.key || "C";
+  els.songCapo.value = song?.capo || "";
+  els.songDuration.value = song?.duration || "";
+  els.songHebrew.checked = song ? Boolean(song.hebrew) : false;
+  els.songBanger.checked = song ? Boolean(song.banger) : false;
+  els.songCredits.value = song?.credits || "";
+  els.songTags.value = tagString(song?.tags || []);
+  els.songNotes.value = song?.notes || "";
+  renderTagSuggestions("");
+  openDialog(els.songDialog);
+  setTimeout(() => els.songTitle.focus(), 50);
+}
+
+function songFromDialogFields(id = makeId("song"), existingSong = {}) {
+  const selectedCategories = normalizeSongCategories(els.songCategory.value);
+  return {
+    ...(existingSong || {}),
+    id,
     title: els.songTitle.value.trim(),
-    category: normalizeCategoryName(els.songCategory.value),
+    category: selectedCategories[0] || "",
+    categories: selectedCategories,
     key: els.songKey.value,
     capo: els.songCapo.value,
     duration: els.songDuration.value.trim(),
-    banger: state.songs.find((candidate) => candidate.id === els.songId.value)?.banger || false,
+    banger: Boolean(els.songBanger.checked),
     hebrew: els.songHebrew.checked,
     credits: els.songCredits.value.trim(),
     tags: normalizeTags(els.songTags.value),
     notes: els.songNotes.value.trim(),
   };
+}
+
+function upsertSong(event) {
+  event.preventDefault();
+  if (songDialogMode === "one-time") {
+    upsertOneTimeSongFromDialog();
+    return;
+  }
+  const songId = els.songId.value || makeId("song");
+  const existingSong = state.songs.find((candidate) => candidate.id === songId);
+  const song = songFromDialogFields(songId, existingSong || {});
 
   if (!song.title) return;
   const existingIndex = state.songs.findIndex((candidate) => candidate.id === song.id);
+  recordLineupUndo();
   if (existingIndex >= 0) {
     state.songs[existingIndex] = song;
     state.lineup = state.lineup.map((item) => item.songId === song.id ? { ...item, capo: item.capo || song.capo } : item);
@@ -2013,6 +4295,66 @@ function upsertSong(event) {
   saveState();
   closeDialog(els.songDialog);
   render();
+}
+
+function oneTimeLineupItemFromSong(song) {
+  return {
+    id: makeId("lineup"),
+    type: "song",
+    songId: "",
+    oneTimeSong: normalizeOneTimeSong(song),
+    capo: song.capo,
+    key: song.key,
+    ready: false,
+    note: "",
+    slidesStatus: "no-slides",
+    slideSongId: "",
+    slideFlowId: "",
+    slideSaveScope: "local",
+  };
+}
+
+function addOneTimeSongFromDialog(event) {
+  event?.preventDefault?.();
+  const duration = els.songDuration.value.trim();
+  if (duration && !/^[0-9]{1,2}:[0-5][0-9]$/.test(duration)) {
+    els.songDuration.focus();
+    toast("Duration should look like 4:20, or leave it blank.");
+    return false;
+  }
+  const song = songFromDialogFields(makeId("once"));
+  if (!song.title) {
+    els.songTitle.focus();
+    toast("Add a song title first.");
+    return false;
+  }
+  recordLineupUndo();
+  state.lineup.push(oneTimeLineupItemFromSong(song));
+  saveState();
+  closeDialog(els.songDialog);
+  render();
+  toast(`Added "${song.title}" to this setlist only.`);
+  return true;
+}
+
+function upsertOneTimeSongFromDialog() {
+  const lineupId = els.songId.value;
+  const item = state.lineup.find((candidate) => candidate.id === lineupId);
+  if (!item) return addOneTimeSongFromDialog();
+  const previous = item.oneTimeSong || {};
+  const song = normalizeOneTimeSong(songFromDialogFields(previous.id || makeId("once"), previous));
+  if (!song.title) return;
+  recordLineupUndo();
+  item.oneTimeSong = song;
+  item.songId = "";
+  item.key = song.key;
+  item.capo = song.capo;
+  item.slideSaveScope = "local";
+  saveState();
+  closeDialog(els.songDialog);
+  render();
+  toast("One-time song updated.");
+  return true;
 }
 
 function saveSongFromDialog(event) {
@@ -2084,7 +4426,7 @@ function openQuickAddDialog() {
   }, 50);
 }
 
-function makeQuickAddRow(title = "", category = [...activeCategories][0] || "Services", credits = "", banger = false) {
+function makeQuickAddRow(title = "", category = [...activeCategories][0] || "", credits = "", banger = false) {
   return {
     id: makeId("quick"),
     title,
@@ -2112,7 +4454,8 @@ function renderQuickAddRows() {
       <div class="quick-add-row" data-quick-id="${row.id}">
         <input type="checkbox" data-quick-check ${row.checked ? "checked" : ""} aria-label="Import ${escapeHtml(row.title || "song")}" />
         <input data-quick-title value="${escapeHtml(row.title)}" maxlength="70" placeholder="Song title" />
-        <select data-quick-category aria-label="Category">
+        <select data-quick-category aria-label="Filter">
+          <option value="" ${row.category ? "" : "selected"}>No filter</option>
           ${categories.map((category) => `<option value="${category.name}" ${category.name === row.category ? "selected" : ""}>${category.name}</option>`).join("")}
         </select>
         <input data-quick-credits value="${escapeHtml(row.credits)}" maxlength="120" placeholder="Credits" />
@@ -2152,7 +4495,8 @@ function importQuickSongs(event) {
     .map((row) => ({
       id: makeId("song"),
       title: row.title.trim(),
-      category: normalizeCategoryName(row.category),
+      category: normalizeSongCategories(row.category)[0] || "",
+      categories: normalizeSongCategories(row.category),
       key: "C",
       capo: "",
       duration: "",
@@ -2167,6 +4511,7 @@ function importQuickSongs(event) {
     return;
   }
 
+  recordLineupUndo();
   state.songs.push(...songs);
   saveState();
   closeDialog(els.quickAddDialog);
@@ -2180,6 +4525,7 @@ function deleteSong() {
   const song = state.songs.find((candidate) => candidate.id === id);
   const confirmed = window.confirm(`Delete "${song.title}" from the song bank and lineups?`);
   if (!confirmed) return;
+  recordLineupUndo();
   state.songs = state.songs.filter((candidate) => candidate.id !== id);
   state.lineup = state.lineup.filter((item) => item.songId !== id);
   saveState();
@@ -2191,6 +4537,7 @@ function deleteSong() {
 function addSongToLineup(songId, showMessage = true, insertAt = null) {
   const song = state.songs.find((candidate) => candidate.id === songId);
   if (!song) return;
+  recordLineupUndo();
   const lineupItem = {
     id: makeId("lineup"),
     type: "song",
@@ -2202,6 +4549,7 @@ function addSongToLineup(songId, showMessage = true, insertAt = null) {
     slidesStatus: song.slideSongId ? "slides-ready" : "no-slides",
     slideSongId: song.slideSongId || "",
     slideFlowId: song.slideFlowId || "",
+    slideSaveScope: "global",
   };
   if (Number.isInteger(insertAt) && insertAt >= 0 && insertAt <= state.lineup.length) {
     state.lineup.splice(insertAt, 0, lineupItem);
@@ -2225,15 +4573,33 @@ function openNoteDialog(item = null) {
   setTimeout(() => els.noteText.focus(), 50);
 }
 
+function openLineupSongNoteDialog(item) {
+  if (!item || item.type !== "song") return;
+  els.noteForm.reset();
+  els.noteId.value = item.id;
+  els.noteText.value = item.note || "";
+  els.noteDialogMode.textContent = "Song";
+  els.noteDialogTitle.textContent = item.note ? "Edit Song Note" : "Add Song Note";
+  els.deleteNoteButton.hidden = !item.note;
+  openDialog(els.noteDialog);
+  setTimeout(() => els.noteText.focus(), 50);
+}
+
 function saveNote(event) {
   event.preventDefault();
   const text = els.noteText.value.trim();
   if (!text) return;
 
   const existing = state.lineup.find((item) => item.id === els.noteId.value);
+  recordLineupUndo();
   if (existing) {
-    existing.text = text;
-    toast("Note updated.");
+    if (existing.type === "song") {
+      existing.note = text;
+      toast("Song note updated.");
+    } else {
+      existing.text = text;
+      toast("Note updated.");
+    }
   } else {
     state.lineup.push({ id: makeId("lineup"), type: "note", text });
     toast("Note added to lineup.");
@@ -2246,11 +4612,17 @@ function saveNote(event) {
 
 function deleteNote() {
   const id = els.noteId.value;
-  state.lineup = state.lineup.filter((item) => item.id !== id);
+  const existing = state.lineup.find((item) => item.id === id);
+  recordLineupUndo();
+  if (existing?.type === "song") {
+    existing.note = "";
+  } else {
+    state.lineup = state.lineup.filter((item) => item.id !== id);
+  }
   saveState();
   closeDialog(els.noteDialog);
   renderLineup();
-  toast("Note removed.");
+  toast(existing?.type === "song" ? "Song note cleared." : "Note removed.");
 }
 
 function openShowNotesDialog() {
@@ -2308,29 +4680,35 @@ function switchShow(showId) {
   const show = state.shows.find((candidate) => candidate.id === showId);
   if (!show) return;
   state.activeShowId = show.id;
-  state.show = { name: show.name, date: show.date, notes: show.notes || "", team: show.team || "" };
+  state.show = showStateFromShow(show);
   state.lineup = show.lineup;
   saveState();
   render();
+  setSidePanelMode("library");
   toast(`Opened ${show.name}.`);
 }
 
 function createNewShow() {
   syncActiveShowFromFields();
+  recordLineupUndo();
   const show = {
     id: makeId("show"),
     name: defaultShowName,
     date: new Date().toISOString().slice(0, 10),
     notes: "",
     team: "",
+    slideExportTheme: defaultSlideExportTheme,
+    slideExportShowTitles: false,
+    slideExportShowCredits: false,
+    slideExportShowCount: false,
+    folderId: activeSetlistFolderId && activeSetlistFolderId !== "unfiled" ? activeSetlistFolderId : "",
     draft: true,
     lineup: [],
   };
   state.shows.unshift(show);
   state.activeShowId = show.id;
-  state.show = { name: show.name, date: show.date, notes: show.notes, team: show.team };
+  state.show = showStateFromShow(show);
   state.lineup = show.lineup;
-  saveState();
   render();
   els.showName.focus();
   els.showName.select();
@@ -2340,17 +4718,23 @@ function createNewShow() {
 function duplicateCurrentShow() {
   syncActiveShowFromFields();
   const current = activeShow();
+  recordLineupUndo();
   const copy = {
     id: makeId("show"),
     name: `${current.name} Copy`,
     date: current.date,
     notes: current.notes || "",
     team: current.team || "",
+    slideExportTheme: normalizeSlideExportTheme(current.slideExportTheme || {}),
+    slideExportShowTitles: Boolean(current.slideExportShowTitles),
+    slideExportShowCredits: Boolean(current.slideExportShowCredits),
+    slideExportShowCount: Boolean(current.slideExportShowCount),
+    folderId: current.folderId || "",
     lineup: JSON.parse(JSON.stringify(current.lineup || [])),
   };
   state.shows.unshift(copy);
   state.activeShowId = copy.id;
-  state.show = { name: copy.name, date: copy.date, notes: copy.notes, team: copy.team };
+  state.show = showStateFromShow(copy);
   state.lineup = copy.lineup;
   saveState();
   render();
@@ -2364,14 +4748,63 @@ function deleteCurrentShow() {
   }
   const current = activeShow();
   if (!window.confirm(`Delete "${current.name}"?`)) return;
+  recordLineupUndo();
   state.shows = state.shows.filter((show) => show.id !== current.id);
   const next = state.shows[0];
   state.activeShowId = next.id;
-  state.show = { name: next.name, date: next.date, notes: next.notes || "", team: next.team || "" };
+  state.show = showStateFromShow(next);
   state.lineup = next.lineup;
   saveState();
   render();
   toast("Show deleted.");
+}
+
+function createSetlistFolder() {
+  const name = window.prompt("Folder name");
+  if (!name?.trim()) return;
+  recordLineupUndo();
+  state.setlistFolders = Array.isArray(state.setlistFolders) ? state.setlistFolders : [];
+  const folder = { id: makeId("folder"), name: name.trim() };
+  state.setlistFolders.push(folder);
+  activeSetlistFolderId = folder.id;
+  saveState();
+  renderSavedShows();
+  toast("Folder created.");
+}
+
+function deleteSelectedSetlists() {
+  if (!selectedSetlistIds.size) {
+    deleteCurrentShow();
+    return;
+  }
+  const nextShows = state.shows.filter((show) => !selectedSetlistIds.has(show.id));
+  if (!nextShows.length) {
+    toast("Keep at least one setlist.");
+    return;
+  }
+  recordLineupUndo();
+  state.shows = nextShows;
+  if (!state.shows.some((show) => show.id === state.activeShowId)) {
+    const next = state.shows[0];
+    state.activeShowId = next.id;
+    state.show = showStateFromShow(next);
+    state.lineup = next.lineup;
+  }
+  selectedSetlistIds = new Set();
+  saveState();
+  render();
+  toast("Selected setlists deleted.");
+}
+
+function moveSelectedSetlists(folderId) {
+  if (!selectedSetlistIds.size) return;
+  const nextFolderId = folderId === "__unfiled" ? "" : folderId;
+  recordLineupUndo();
+  state.shows = state.shows.map((show) => selectedSetlistIds.has(show.id) ? { ...show, folderId: nextFolderId } : show);
+  selectedSetlistIds = new Set();
+  saveState();
+  renderSavedShows();
+  toast(nextFolderId ? "Setlists moved." : "Setlists moved to Unfiled.");
 }
 
 function setRailActive(button) {
@@ -2392,7 +4825,7 @@ function getExportItems() {
         };
       }
 
-      const song = state.songs.find((candidate) => candidate.id === item.songId);
+      const song = songForLineupItem(item);
       if (!song) return null;
       return {
         type: "song",
@@ -2746,27 +5179,28 @@ function drawPdfCanvas(context, page, items, includeCredits, includeRealKey, ori
   }
   context.save();
   context.fillStyle = "#555555";
-  context.font = "700 8px Arial, Helvetica, sans-serif";
+  context.font = "800 10px Arial, Helvetica, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "alphabetic";
-  context.fillText("Created with LINEUP · Songleading.net", page.width / 2, page.height - 13);
+  context.fillText("Created with LINEUP · Songleading.net", page.width / 2, page.height - 15);
   context.restore();
 }
 
 function drawPdfLabels(context, x, y, width, includeRealKey) {
-  const keyWidth = 28;
-  const capoWidth = 32;
+  const keyWidth = 44;
+  const capoWidth = 52;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 34 : 0;
+  const realKeyWidth = includeRealKey ? 48 : 0;
+  const controlInset = 8;
   context.save();
   context.font = "900 11px Arial, Helvetica, sans-serif";
   context.fillStyle = "#444444";
   context.textBaseline = "middle";
   context.fillText("SONG", x + numberWidth + 6, y);
   context.textAlign = "center";
-  context.fillText("CAPO", x + width - realKeyWidth - keyWidth - capoWidth / 2, y);
-  context.fillText("KEY", x + width - realKeyWidth - keyWidth / 2, y);
-  if (includeRealKey) context.fillText("REAL", x + width - realKeyWidth / 2, y);
+  context.fillText("CAPO", x + width - controlInset - realKeyWidth - keyWidth - capoWidth / 2, y);
+  context.fillText("KEY", x + width - controlInset - realKeyWidth - keyWidth / 2, y);
+  if (includeRealKey) context.fillText("REAL", x + width - controlInset - realKeyWidth / 2, y);
   context.strokeStyle = "#111111";
   context.lineWidth = 1.7;
   context.beginPath();
@@ -2777,14 +5211,15 @@ function drawPdfLabels(context, x, y, width, includeRealKey) {
 }
 
 function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includeRealKey, orientation) {
-  const keyWidth = 28;
-  const capoWidth = 32;
+  const keyWidth = 44;
+  const capoWidth = 52;
   const numberWidth = 42;
-  const realKeyWidth = includeRealKey ? 34 : 0;
+  const realKeyWidth = includeRealKey ? 48 : 0;
+  const controlInset = 8;
   const lineHeight = item.type === "note" ? metrics.noteRowHeight : metrics.rowHeight;
   const mainY = y + lineHeight / 2;
   const titleX = x + numberWidth + 6;
-  const titleWidth = width - numberWidth - capoWidth - keyWidth - realKeyWidth - 12;
+  const titleWidth = width - numberWidth - capoWidth - keyWidth - realKeyWidth - controlInset - 12;
   context.save();
   context.textBaseline = "middle";
   context.strokeStyle = "#222222";
@@ -2805,8 +5240,8 @@ function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includ
     context.fillText(item.number, x + numberWidth - 8, mainY);
     context.textAlign = "left";
     const hasCredits = includeCredits && item.credits;
-    const titleY = hasCredits ? mainY - Math.max(5, metrics.fontSize * 0.18) : mainY;
-    const creditY = titleY + Math.max(9, metrics.fontSize * 0.46);
+    const titleY = hasCredits ? mainY - Math.max(10, metrics.fontSize * 0.32) : mainY;
+    const creditY = titleY + Math.max(18, metrics.fontSize * 0.78);
     const note = item.note || "";
     const noteWidth = note ? Math.min(titleWidth * 0.34, Math.max(70, context.measureText(note).width + 10)) : 0;
     fitCanvasText(context, shortenTitle(item.title, metrics.columns, orientation), titleX, titleY, titleWidth - noteWidth - 6);
@@ -2824,11 +5259,11 @@ function drawPdfLine(context, item, x, y, width, metrics, includeCredits, includ
     context.font = `800 ${metrics.fontSize}px Arial, Helvetica, sans-serif`;
     context.fillStyle = "#333333";
     context.textAlign = "center";
-    context.fillText(formatExportCapo(item.capo), x + width - realKeyWidth - keyWidth - capoWidth / 2, mainY);
-    context.fillText(item.key, x + width - realKeyWidth - keyWidth / 2, mainY);
+    context.fillText(formatExportCapo(item.capo), x + width - controlInset - realKeyWidth - keyWidth - capoWidth / 2, mainY);
+    context.fillText(item.key, x + width - controlInset - realKeyWidth - keyWidth / 2, mainY);
     if (includeRealKey) {
       context.font = `800 ${Math.max(12, Math.floor(metrics.fontSize * 0.58))}px Arial, Helvetica, sans-serif`;
-      context.fillText(formatRealKey(item.key, item.capo), x + width - realKeyWidth / 2, mainY);
+      context.fillText(formatRealKey(item.key, item.capo), x + width - controlInset - realKeyWidth / 2, mainY);
     }
   }
 
@@ -3014,7 +5449,7 @@ function exportLayoutMetrics(items, orientation, fontMode, spacingMode, columnMo
     fontSize,
     rowHeight,
     noteRowHeight: Math.max(30, rowHeight - 4),
-    creditGap: Math.round(Math.max(-1, Math.min(8, (rowHeight - 47) * 0.25 - 1))),
+    creditGap: Math.round(Math.max(9, Math.min(14, (rowHeight - 47) * 0.25 + 9))),
   };
 }
 
@@ -3068,8 +5503,8 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
   const fontSize = metrics.fontSize;
   const exportDate = formatExportDate(state.show.date);
   const chartColumns = includeRealKey
-    ? "42px minmax(0, 1fr) 32px 30px 36px"
-    : "42px minmax(0, 1fr) 32px 30px";
+    ? "42px minmax(0, 1fr) 52px 44px 48px"
+    : "42px minmax(0, 1fr) 52px 44px";
   const rows = items
     .map((item) => item.type === "note" ? `
       <tr class="note">
@@ -3119,7 +5554,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           .title-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; line-height: 1.04; }
           .song-title-export { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .title-main, .credits, .line-note-export { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-          .credits { display: block; margin-top: ${metrics.creditGap}px; color: #555; font-size: ${Math.max(9, Math.floor(fontSize * 0.42))}px; line-height: 0.95; font-weight: 700; }
+          .credits { display: block; margin-top: ${metrics.creditGap}px; color: #555; font-size: ${Math.max(9, Math.floor(fontSize * 0.42))}px; line-height: 1; font-weight: 700; }
           .line-note-export { display: inline-block; flex: 0 1 auto; color: #6a4a00; font-weight: 700; font-style: italic; }
           .note-size-short { font-size: ${Math.max(12, Math.floor(fontSize * 0.55))}px; }
           .note-size-medium { font-size: ${Math.max(11, Math.floor(fontSize * 0.48))}px; }
@@ -3129,7 +5564,7 @@ function buildExportHtml(items, includeCredits, includeRealKey, orientation, fon
           .number { padding-left: 2px; padding-right: 8px; font-size: 0.82em; overflow: visible; text-align: right; text-overflow: clip; }
           .capo, .key { color: #333; }
           .real-key { color: #444; font-size: ${Math.max(11, Math.floor(fontSize * 0.58))}px; }
-          .watermark { margin-top: auto; padding-top: 6px; text-align: center; color: #555; font-size: 8px; font-weight: 700; }
+          .watermark { margin-top: auto; padding-top: 6px; text-align: center; color: #555; font-size: 10px; font-weight: 800; }
           @media print { .sheet { height: auto; } }
         </style>
       </head>
@@ -3202,6 +5637,7 @@ function moveLineupItem(id, direction) {
   const index = state.lineup.findIndex((item) => item.id === id);
   const nextIndex = index + direction;
   if (index < 0 || nextIndex < 0 || nextIndex >= state.lineup.length) return;
+  recordLineupUndo();
   const [item] = state.lineup.splice(index, 1);
   state.lineup.splice(nextIndex, 0, item);
   saveState();
@@ -3211,6 +5647,7 @@ function moveLineupItem(id, direction) {
 function moveLineupItemTo(id, targetIndex) {
   const fromIndex = state.lineup.findIndex((item) => item.id === id);
   if (fromIndex < 0) return;
+  recordLineupUndo();
   const [item] = state.lineup.splice(fromIndex, 1);
   const adjustedIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
   state.lineup.splice(Math.max(0, Math.min(adjustedIndex, state.lineup.length)), 0, item);
@@ -3247,10 +5684,20 @@ function updateLineupDropPreview(event) {
   row.classList.add(event.clientY > rect.top + rect.height / 2 ? "drop-after" : "drop-before");
 }
 
+function pointNearLineupRows(x, y, padding = 28) {
+  if (!els.lineupRows) return false;
+  const rect = els.lineupRows.getBoundingClientRect();
+  return x >= rect.left - padding && x <= rect.right + padding && y >= rect.top - padding && y <= rect.bottom + padding;
+}
+
 function lineupDropIndexFromPoint(x, y) {
   if (!els.lineupRows) return state.lineup.length;
   const target = document.elementFromPoint(x, y);
-  if (!target || !els.lineupRows.contains(target)) return state.lineup.length;
+  if (!target || !els.lineupRows.contains(target)) {
+    if (!pointNearLineupRows(x, y)) return state.lineup.length;
+    const rect = els.lineupRows.getBoundingClientRect();
+    return y < rect.top + rect.height / 2 ? 0 : state.lineup.length;
+  }
   const row = target.closest?.(".lineup-row");
   if (!row || !els.lineupRows.contains(row)) return state.lineup.length;
   const rowIndex = state.lineup.findIndex((item) => item.id === row.dataset.lineupId);
@@ -3263,7 +5710,11 @@ function updateLineupDropPreviewFromPoint(x, y) {
   clearLineupDropPreview();
   if (!els.lineupRows) return;
   const target = document.elementFromPoint(x, y);
-  if (!target || !els.lineupRows.contains(target)) return;
+  if (!target || !els.lineupRows.contains(target)) {
+    if (!pointNearLineupRows(x, y)) return;
+    els.lineupRows.classList.add("drop-ready", "drop-at-end");
+    return;
+  }
   els.lineupRows.classList.add("drop-ready");
   const row = target.closest?.(".lineup-row");
   if (!row || !els.lineupRows.contains(row)) {
@@ -3278,14 +5729,19 @@ function updateLineupDropPreviewFromPoint(x, y) {
 function setLineupCapo(lineupId, value) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
   if (!item) return;
+  if (item.capo === value) return;
+  recordLineupUndo();
   item.capo = value;
   saveState();
   renderLineup();
+  refreshCapoSelectLabels();
 }
 
 function setLineupKey(lineupId, value) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
   if (!item) return;
+  if (item.key === value) return;
+  recordLineupUndo();
   item.key = value;
   saveState();
   renderLineup();
@@ -3294,13 +5750,17 @@ function setLineupKey(lineupId, value) {
 function setLineupNote(lineupId, value) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
   if (!item) return;
-  item.note = value.trim();
+  const nextNote = value.trim();
+  if ((item.note || "") === nextNote) return;
+  recordLineupUndo();
+  item.note = nextNote;
   saveState();
 }
 
 function toggleSongBanger(songId) {
   const song = state.songs.find((candidate) => candidate.id === songId);
   if (!song) return;
+  recordLineupUndo();
   song.banger = !song.banger;
   saveState();
   renderLineup();
@@ -3313,8 +5773,12 @@ function encodeShareData(data) {
 }
 
 function decodeShareData(value) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  return decodeURIComponent(atob(base64));
+  const token = String(value || "");
+  if (token.length > importLimits.shareChars) throw new Error("Share data was too large.");
+  const base64 = token.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(token.length / 4) * 4, "=");
+  const decoded = decodeURIComponent(atob(base64));
+  if (decoded.length > importLimits.shareChars) throw new Error("Share data was too large.");
+  return decoded;
 }
 
 async function shareLineup() {
@@ -3330,31 +5794,46 @@ function buildShareUrl() {
   return `${window.location.href.split("#")[0]}#lineup=${encodeShareData(buildLineupPayload())}`;
 }
 
+function storageStateFrom(sourceState) {
+  const previousState = state;
+  state = normalizeState(sourceState);
+  const value = storageState();
+  state = previousState;
+  return value;
+}
+
 function buildLineupPayload() {
   commitShowMetaFromFields();
   syncActiveShowFromFields();
+  const snapshot = normalizeState({
+    show: state.show,
+    songs: state.songs,
+    lineup: state.lineup,
+  });
   return {
     fileType: "show-lineup-builder",
     version: appVersion,
     exportedAt: new Date().toISOString(),
-    show: state.show,
-    songs: state.songs,
-    lineup: state.lineup,
+    show: snapshot.show,
+    songs: snapshot.songs,
+    lineup: snapshot.lineup,
   };
 }
 
 function buildBackupPayload() {
   commitShowMetaFromFields();
   syncActiveShowFromFields();
+  const snapshot = normalizeState(storageState());
   return {
     fileType: "show-lineup-builder-backup",
     version: appVersion,
     exportedAt: new Date().toISOString(),
-    activeShowId: state.activeShowId,
-    show: state.show,
-    songs: state.songs,
-    lineup: state.lineup,
-    shows: state.shows,
+    activeShowId: snapshot.activeShowId,
+    setlistFolders: snapshot.setlistFolders,
+    show: snapshot.show,
+    songs: snapshot.songs,
+    lineup: snapshot.lineup,
+    shows: snapshot.shows,
   };
 }
 
@@ -3386,39 +5865,39 @@ function openBackupFile() {
 }
 
 function importLineupFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
+  readImportedJsonFile(file, importLimits.lineupBytes, (parsed) => {
     try {
-      const imported = normalizeState(JSON.parse(String(reader.result || "{}")));
+      const imported = normalizeImportedPayload(parsed, "lineup");
       state = imported;
+      lineupUndoStack = [];
+      lineupRedoStack = [];
       saveState();
       closeDialog(els.shareDialog);
       render();
-      toast("Lineup file opened and saved here.");
-    } catch {
-      toast("That lineup file could not be opened.");
+      toast("Lineup file opened and saved on this device.");
+    } catch (error) {
+      console.warn("Lineup file was rejected.", error);
+      toast(error instanceof Error ? error.message : "That lineup file could not be opened safely.");
     }
   });
-  reader.readAsText(file);
 }
 
 function importBackupFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
+  readImportedJsonFile(file, importLimits.backupBytes, (parsed) => {
     try {
-      state = normalizeState(JSON.parse(String(reader.result || "{}")));
+      state = normalizeImportedPayload(parsed, "backup");
+      lineupUndoStack = [];
+      lineupRedoStack = [];
       saveState();
       if (els.shareDialog.open) closeDialog(els.shareDialog);
       if (els.settingsDialog.open) closeDialog(els.settingsDialog);
       render();
-      toast("Backup restored.");
-    } catch {
-      toast("That backup file could not be opened.");
+      toast("Backup restored and saved on this device.");
+    } catch (error) {
+      console.warn("Backup file was rejected.", error);
+      toast(error instanceof Error ? error.message : "That backup file could not be opened safely.");
     }
   });
-  reader.readAsText(file);
 }
 
 async function copyShareLink() {
@@ -3439,15 +5918,22 @@ function handleLineupAction(action, lineupId, songId) {
   }
 
   if (action === "ready" && item) {
+    recordLineupUndo();
     item.ready = !item.ready;
     saveState();
     renderLineup();
   }
 
   if (action === "info") {
+    if (item?.oneTimeSong) {
+      openOneTimeSongDialog(item);
+      return;
+    }
     const song = state.songs.find((candidate) => candidate.id === songId);
     openSongDialog(song);
   }
+
+  if (action === "edit-lineup-note" && item) openLineupSongNoteDialog(item);
 
   if (action === "edit-note" && item) openNoteDialog(item);
 
@@ -3457,6 +5943,7 @@ function handleLineupAction(action, lineupId, songId) {
 }
 
 function removeLineupItem(lineupId) {
+  recordLineupUndo();
   state.lineup = state.lineup.filter((candidate) => candidate.id !== lineupId);
   openRowId = null;
   saveState();
@@ -3465,7 +5952,7 @@ function removeLineupItem(lineupId) {
 }
 
 function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, (char) => ({
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -3540,6 +6027,8 @@ function bindPanelResize() {
 }
 
 function bindEvents() {
+  document.addEventListener("keydown", handleUndoRedoShortcut, true);
+
   els.categoryFilters.addEventListener("click", (event) => {
     const bangerButton = event.target.closest("[data-banger-filter]");
     if (bangerButton) {
@@ -3589,8 +6078,12 @@ function bindEvents() {
     toast(sortAsc ? "Song bank sorted A to Z." : "Song bank sorted Z to A.");
   });
 
+  els.toggleFiltersButton?.addEventListener("click", toggleLibraryFilters);
+  els.homeButton?.addEventListener("click", handleHomeButtonClick);
   els.newSongButton.addEventListener("click", () => openSongDialog());
+  els.oneTimeSongButton?.addEventListener("click", () => openOneTimeSongDialog());
   els.quickAddButton.addEventListener("click", () => openQuickAddDialog());
+  els.addOneTimeSongButton?.addEventListener("click", addOneTimeSongFromDialog);
   els.songTitle.addEventListener("input", () => {
     if (hasHebrewLetters(els.songTitle.value)) els.songHebrew.checked = true;
   });
@@ -3638,14 +6131,43 @@ function bindEvents() {
   els.settingsRestoreButton.addEventListener("click", openBackupFile);
 
   els.savedShowsList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-show-id]");
+    const checkbox = event.target.closest("[data-select-show]");
+    if (checkbox) {
+      const id = checkbox.dataset.selectShow;
+      if (checkbox.checked) selectedSetlistIds.add(id);
+      else selectedSetlistIds.delete(id);
+      renderSavedShows();
+      return;
+    }
+    const button = event.target.closest("[data-open-show]");
     if (!button) return;
     if (els.savedShowsDetails) els.savedShowsDetails.open = false;
-    switchShow(button.dataset.showId);
+    switchShow(button.dataset.openShow);
+  });
+
+  els.setlistFolderFilters?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-folder-filter]");
+    if (!button) return;
+    activeSetlistFolderId = button.dataset.folderFilter || "";
+    selectedSetlistIds = new Set();
+    renderSavedShows();
+  });
+
+  els.moveSetlistsFolder?.addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    moveSelectedSetlists(event.target.value);
+    event.target.value = "";
   });
 
   els.showsTabButton.addEventListener("click", () => {
+    els.headerMenu.open = false;
     setSidePanelMode(sidePanelMode === "shows" ? "library" : "shows");
+  });
+
+  els.showsBackButton?.addEventListener("click", () => {
+    selectedSetlistIds = new Set();
+    setSidePanelMode("library");
+    renderSavedShows();
   });
 
   els.newShowButton.addEventListener("click", () => {
@@ -3653,6 +6175,7 @@ function bindEvents() {
     createNewShow();
     setSidePanelMode("shows");
   });
+  els.newSetlistFolderButton?.addEventListener("click", createSetlistFolder);
   els.duplicateShowButton.addEventListener("click", () => {
     if (els.savedShowsDetails) els.savedShowsDetails.open = false;
     duplicateCurrentShow();
@@ -3660,7 +6183,7 @@ function bindEvents() {
   });
   els.deleteShowButton.addEventListener("click", () => {
     if (els.savedShowsDetails) els.savedShowsDetails.open = false;
-    deleteCurrentShow();
+    deleteSelectedSetlists();
     setSidePanelMode("shows");
   });
 
@@ -3671,7 +6194,7 @@ function bindEvents() {
     toast("Lineup saved on this device.");
   });
 
-  els.renameShowButton.addEventListener("click", () => {
+  els.renameShowButton?.addEventListener("click", () => {
     els.headerMenu.open = false;
     els.showName.focus();
     els.showName.select();
@@ -3736,7 +6259,12 @@ function bindEvents() {
   });
   els.copyShareButton.addEventListener("click", copyShareLink);
   els.downloadLineupFileButton.addEventListener("click", downloadLineupFile);
-  els.openLineupFileButton.addEventListener("click", openLineupFile);
+  els.openLineupFileButton?.addEventListener("click", openLineupFile);
+  els.openLineupFileMenuButton?.addEventListener("click", () => {
+    if (els.headerMenu) els.headerMenu.open = false;
+    openLineupFile();
+  });
+  els.openLineupFileSetlistsButton?.addEventListener("click", openLineupFile);
   els.downloadBackupButton.addEventListener("click", downloadBackupFile);
   els.openBackupButton.addEventListener("click", openBackupFile);
   els.lineupFileInput.addEventListener("change", (event) => {
@@ -3780,23 +6308,121 @@ function bindEvents() {
   });
   els.slidesExportForm?.addEventListener("submit", submitSlidesExport);
   document.querySelectorAll("input[name='slidesExportTheme']").forEach((input) => {
-    input.addEventListener("change", renderSlidesExportPreview);
+    input.addEventListener("change", () => {
+      renderSlidesExportPreview().then(persistCurrentSlidesExportTheme).catch((error) => toast(error instanceof Error ? error.message : "Could not update theme."));
+    });
   });
   els.slidesExportImage?.addEventListener("change", async () => {
     if (els.slidesExportPresetSelect) els.slidesExportPresetSelect.value = "";
     if (els.deleteSlidesPresetButton) els.deleteSlidesPresetButton.disabled = true;
     await renderSlidesExportPreview();
+    await persistCurrentSlidesExportTheme();
   });
   els.slidesExportPresetSelect?.addEventListener("change", async () => {
     if (els.slidesExportImage) els.slidesExportImage.value = "";
     if (els.deleteSlidesPresetButton) els.deleteSlidesPresetButton.disabled = !els.slidesExportPresetSelect.value;
+    const preset = selectedSlidesThemePreset();
+    if (preset) {
+      slidesExportPendingImage = preset.image;
+      if (els.slidesExportImageZoom) els.slidesExportImageZoom.value = String(sanitizeSlideExportCrop(preset.crop).zoom);
+      if (els.slidesExportImageX) els.slidesExportImageX.value = String(sanitizeSlideExportCrop(preset.crop).x);
+      if (els.slidesExportImageY) els.slidesExportImageY.value = String(sanitizeSlideExportCrop(preset.crop).y);
+    }
     await renderSlidesExportPreview();
+    await persistCurrentSlidesExportTheme();
+  });
+  [els.slidesExportImageZoom, els.slidesExportImageX, els.slidesExportImageY].forEach((input) => {
+    input?.addEventListener("input", () => {
+      renderSlidesExportPreview().then(persistCurrentSlidesExportTheme).catch((error) => toast(error instanceof Error ? error.message : "Could not update crop."));
+    });
+  });
+  els.slidesExportPreview?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-slide-preview-step]");
+    if (!button || button.disabled) return;
+    slidesExportPreviewIndex += Number(button.dataset.slidePreviewStep || 0);
+    renderSlidesExportPreview().catch((error) => toast(error instanceof Error ? error.message : "Could not change preview slide."));
+  });
+  const updateSlidesExportTextOptions = () => {
+    const options = getSlidesExportOptions();
+    state.show.slideExportShowTitles = options.showTitles;
+    state.show.slideExportShowCredits = options.showCredits;
+    state.show.slideExportShowCount = options.showCount;
+    saveState();
+    renderSlidesExportPreview().catch((error) => toast(error instanceof Error ? error.message : "Could not update slide option."));
+    if (slidePreviewOpen) renderSlidePreview();
+  };
+  [els.slidesShowTitlesToggle, els.slidesShowCreditsToggle, els.slidesShowCountToggle].forEach((input) => {
+    input?.addEventListener("change", updateSlidesExportTextOptions);
   });
   els.saveSlidesPresetButton?.addEventListener("click", () => {
     saveCurrentSlidesPreset().catch((error) => toast(error instanceof Error ? error.message : "Could not save preset."));
   });
   els.deleteSlidesPresetButton?.addEventListener("click", () => {
     deleteCurrentSlidesPreset().catch((error) => toast(error instanceof Error ? error.message : "Could not delete preset."));
+  });
+  els.clearSlidesImageButton?.addEventListener("click", () => {
+    clearSlidesExportImage().catch((error) => toast(error instanceof Error ? error.message : "Could not clear image."));
+  });
+  els.slidesEditorBackButton?.addEventListener("click", () => closeSlidesEditor(true));
+  els.slidesSaveScopeSelect?.addEventListener("change", (event) => setSlidesSaveScope(event.target.value));
+  els.slidesCreateButton?.addEventListener("click", createSlidesFromPastedLyrics);
+  els.slidesUseSongNotesButton?.addEventListener("click", fillSlidesFromSongNotes);
+  els.slidesEditorPreviewButton?.addEventListener("click", previewSlidesEditorSet);
+  els.slidesEditorReadyButton?.addEventListener("click", markSlidesEditorReady);
+  els.slidesAddSlideButton?.addEventListener("click", addSlidesEditorSlide);
+  els.slidesUndoButton?.addEventListener("click", undoSlidesEditor);
+  els.slidesRedoButton?.addEventListener("click", redoSlidesEditor);
+  els.slidesDuplicateButton?.addEventListener("click", duplicateSlidesEditorSlide);
+  els.slidesSplitButton?.addEventListener("click", splitSlidesEditorSlide);
+  els.slidesDeleteButton?.addEventListener("click", deleteSlidesEditorSlide);
+  els.slidesMoveUpButton?.addEventListener("click", () => moveSlidesEditorSlide(-1));
+  els.slidesMoveDownButton?.addEventListener("click", () => moveSlidesEditorSlide(1));
+  els.slidesSentencePreviousButton?.addEventListener("click", () => moveSlidesEditorLine("previous"));
+  els.slidesSentenceNextButton?.addEventListener("click", () => moveSlidesEditorLine("next"));
+  els.slidesJoinPreviousButton?.addEventListener("click", () => joinSlidesEditorSlide("previous"));
+  els.slidesJoinNextButton?.addEventListener("click", () => joinSlidesEditorSlide("next"));
+  els.slidesFontDownButton?.addEventListener("click", () => changeSlidesEditorFont(-4));
+  els.slidesFontUpButton?.addEventListener("click", () => changeSlidesEditorFont(4));
+  els.slidesFitScreenButton?.addEventListener("click", fitSlidesEditorFontToScreen);
+  els.slidesCurrentText?.addEventListener("input", updateCurrentSlideText);
+  els.slidesEditorList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-slide-index]");
+    if (!button) return;
+    selectSlidesEditorSlide(Number(button.dataset.slideIndex));
+  });
+  els.slidesThemeButtons?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-slide-theme]");
+    if (!button) return;
+    setSlidesEditorTheme(button.dataset.slideTheme);
+  });
+  els.slidesEditorDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeSlidesEditor(true);
+  });
+  els.slidesEditorDialog?.addEventListener("click", (event) => {
+    if (event.target !== els.slidesEditorDialog) return;
+    event.preventDefault();
+    closeSlidesEditor(true);
+  });
+
+  document.addEventListener("pointerdown", (event) => {
+    const select = event.target.closest?.(".capo-select");
+    if (select && isMobileLayout()) setCapoSelectLabels(select, false);
+  }, true);
+
+  document.addEventListener("focusin", (event) => {
+    const select = event.target.closest?.(".capo-select");
+    if (select && isMobileLayout()) setCapoSelectLabels(select, false);
+  }, true);
+
+  document.addEventListener("focusout", (event) => {
+    const select = event.target.closest?.(".capo-select");
+    if (select && isMobileLayout()) window.setTimeout(() => setCapoSelectLabels(select, true), 0);
+  }, true);
+
+  document.addEventListener("change", (event) => {
+    const select = event.target.closest?.(".capo-select");
+    if (select && isMobileLayout()) window.setTimeout(refreshCapoSelectLabels, 0);
   });
 
   document.addEventListener("click", (event) => {
@@ -3852,7 +6478,7 @@ function bindEvents() {
   els.songBankList.addEventListener("click", (event) => {
     const actionEl = event.target.closest("[data-action]");
     const row = event.target.closest(".bank-song");
-    if (isMobileLayout() && mobileLibraryExpanded && row && !event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) {
+    if (row && !event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) {
       event.preventDefault();
       addSongToLineup(row.dataset.songId, true);
       return;
@@ -3861,7 +6487,7 @@ function bindEvents() {
     const songId = actionEl.dataset.songId;
     if (actionEl.dataset.action === "add-bank") {
       event.preventDefault();
-      if (isMobileLayout() && mobileLibraryExpanded) addSongToLineup(songId, true);
+      addSongToLineup(songId, true);
       return;
     }
     if (actionEl.dataset.action === "toggle-banger") {
@@ -3878,12 +6504,47 @@ function bindEvents() {
     }
   });
 
-  els.songBankList.addEventListener("dblclick", (event) => {
-    if (event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides']")) return;
+  els.songBankList.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    if (event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) return;
     const row = event.target.closest(".bank-song");
     if (!row) return;
     event.preventDefault();
     addSongToLineup(row.dataset.songId, true);
+  });
+
+  els.songBankList.addEventListener("dblclick", (event) => {
+    if (!event.target.closest(".bank-song")) return;
+    event.preventDefault();
+  });
+
+
+  els.lineupRows.addEventListener("click", (event) => {
+    const actionEl = event.target.closest("[data-action]");
+    if (!actionEl || !els.lineupRows.contains(actionEl)) return;
+    const action = actionEl.dataset.action;
+    const lineupId = actionEl.dataset.lineupId;
+    const songId = actionEl.dataset.songId || "";
+    if (!["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides"].includes(action)) return;
+    event.preventDefault();
+    handleLineupAction(action, lineupId, songId);
+  });
+
+  els.lineupRows.addEventListener("change", (event) => {
+    const control = event.target.closest("[data-action][data-lineup-id]");
+    if (!control || !els.lineupRows.contains(control)) return;
+    const action = control.dataset.action;
+    if (action === "capo") {
+      setLineupCapo(control.dataset.lineupId, control.value);
+      return;
+    }
+    if (action === "key") {
+      setLineupKey(control.dataset.lineupId, control.value);
+      return;
+    }
+    if (action === "note") {
+      setLineupNote(control.dataset.lineupId, control.value);
+    }
   });
 
   els.lineupRows.addEventListener("dblclick", (event) => {
@@ -4003,6 +6664,20 @@ function bindEvents() {
       closeDialog(dialog);
     });
   });
+  document.querySelectorAll("dialog").forEach((dialog) => {
+    if (dialog.dataset.backdropCloseBound) return;
+    dialog.dataset.backdropCloseBound = "true";
+    dialog.addEventListener("click", (event) => {
+      if (event.defaultPrevented) return;
+      if (event.target !== dialog) return;
+      if (dialog === els.slidesEditorDialog) {
+        event.preventDefault();
+        closeSlidesEditor(true);
+        return;
+      }
+      closeDialog(dialog);
+    });
+  });
 }
 
 function bindCoreFallbackEvents() {
@@ -4013,8 +6688,12 @@ function bindCoreFallbackEvents() {
   };
 
   bind(els.newSongButton, "click", () => openSongDialog());
+  bind(els.oneTimeSongButton, "click", () => openOneTimeSongDialog());
   bind(els.quickAddButton, "click", openQuickAddDialog);
+  bind(els.addOneTimeSongButton, "click", addOneTimeSongFromDialog);
   bind(els.addNoteButton, "click", () => openNoteDialog());
+  bind(els.toggleFiltersButton, "click", toggleLibraryFilters);
+  bind(els.homeButton, "click", handleHomeButtonClick);
   bind(els.saveLineupButton, "click", () => {
     commitShowMetaFromFields();
     saveState();
@@ -4026,6 +6705,7 @@ function bindCoreFallbackEvents() {
     openExportPreview();
   });
   bind(els.showsTabButton, "click", () => {
+    els.headerMenu.open = false;
     setSidePanelMode(sidePanelMode === "shows" ? "library" : "shows");
   });
   bind(els.startNewSetlistButton, "click", () => {
@@ -4055,8 +6735,10 @@ function bindPointerDragFallback() {
   let suppressNextClick = false;
 
   const stopPointerDrag = () => {
+    if (drag?.longPressTimer) window.clearTimeout(drag.longPressTimer);
     document.body.classList.remove("is-pointer-dragging");
     document.querySelectorAll(".dragging").forEach((row) => row.classList.remove("dragging"));
+    document.querySelectorAll(".long-press-ready").forEach((row) => row.classList.remove("long-press-ready"));
     draggedBankSongId = null;
     draggedLineupId = null;
     drag = null;
@@ -4068,14 +6750,18 @@ function bindPointerDragFallback() {
   };
 
   document.addEventListener("pointerdown", (event) => {
-    if (isMobileLayout()) return;
     if (event.button !== 0) return;
+    const mobile = isMobileLayout();
+    const bankRow = event.target.closest?.(".bank-song");
+    const lineupRow = event.target.closest?.(".lineup-row");
+    const mobileDragHandle = mobile ? event.target.closest?.(".lineup-row .drag-handle") : null;
+    if (mobile && lineupRow && !mobileDragHandle) return;
+    if (mobile && !lineupRow && !bankRow) return;
     const blockedControl = event.target.closest?.("input, select, textarea, [data-close-dialog], dialog");
     if (blockedControl) return;
     const blockedButton = event.target.closest?.("button, a, summary, [role='button'], [data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button, .icon-action, .ready-toggle");
-    if (blockedButton) return;
+    if (blockedButton && !mobileDragHandle) return;
 
-    const bankRow = event.target.closest?.(".bank-song");
     if (bankRow) {
       drag = {
         type: "bank",
@@ -4085,12 +6771,20 @@ function bindPointerDragFallback() {
         row: bankRow,
         pointerId: event.pointerId,
         active: false,
+        longPressReady: !mobile,
+        longPressTimer: null,
       };
+      if (mobile) {
+        drag.longPressTimer = window.setTimeout(() => {
+          if (!drag || drag.pointerId !== event.pointerId || drag.type !== "bank") return;
+          drag.longPressReady = true;
+          drag.row?.classList.add("long-press-ready");
+        }, 240);
+      }
       bankRow.setPointerCapture?.(event.pointerId);
       return;
     }
 
-    const lineupRow = event.target.closest?.(".lineup-row");
     if (lineupRow) {
       drag = {
         type: "lineup",
@@ -4100,6 +6794,8 @@ function bindPointerDragFallback() {
         row: lineupRow,
         pointerId: event.pointerId,
         active: false,
+        longPressReady: true,
+        longPressTimer: null,
       };
       lineupRow.setPointerCapture?.(event.pointerId);
     }
@@ -4108,8 +6804,16 @@ function bindPointerDragFallback() {
   document.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.active && drag.type === "bank" && isMobileLayout() && !drag.longPressReady) {
+      if (distance > 12) {
+        if (drag.longPressTimer) window.clearTimeout(drag.longPressTimer);
+        drag = null;
+      }
+      return;
+    }
     if (!drag.active && distance < 7) return;
     if (!drag.active) {
+      if (drag.longPressTimer) window.clearTimeout(drag.longPressTimer);
       drag.active = true;
       suppressNextClick = true;
       document.body.dataset.suppressDragClick = "true";
@@ -4125,7 +6829,9 @@ function bindPointerDragFallback() {
   document.addEventListener("pointerup", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     const wasActive = drag.active;
-    const droppedInLineup = Boolean(document.elementFromPoint(event.clientX, event.clientY)?.closest?.("#lineupRows"));
+    const droppedInLineup =
+      Boolean(document.elementFromPoint(event.clientX, event.clientY)?.closest?.("#lineupRows")) ||
+      pointNearLineupRows(event.clientX, event.clientY);
     const insertAt = lineupDropIndexFromPoint(event.clientX, event.clientY);
     if (wasActive && droppedInLineup) {
       event.preventDefault();
@@ -4197,6 +6903,7 @@ function bindMobileLibraryDrawerDrag() {
   els.bankPanel.addEventListener("pointerdown", (event) => {
     if (!isMobileLayout()) return;
     if (sidePanelMode !== "library") return;
+    if (event.target.closest(".bank-song")) return;
     if (event.target.closest("button, input, select, textarea, a, summary")) return;
     const fromHeader = Boolean(event.target.closest(".bank-header") || event.target === els.bankPanel);
     if (!fromHeader && !event.target.closest(".side-panel-view, .song-bank-list, .category-filters, .search-row")) return;
@@ -4246,7 +6953,7 @@ function bindMobileTapBridge() {
 
   document.addEventListener("pointerdown", (event) => {
     if (!isMobileLayout() || event.pointerType === "mouse") return;
-    const control = event.target.closest?.("button, a, summary, [data-show-id]");
+    const control = event.target.closest?.("button, a, [data-show-id]");
     if (!control) return;
     tap = {
       control,
@@ -4310,6 +7017,13 @@ function bindEmergencyButtonDelegates() {
         handled();
         populateFormOptions();
         openSongDialog();
+        return;
+      }
+
+      if (control.id === "oneTimeSongButton") {
+        handled();
+        populateFormOptions();
+        openOneTimeSongDialog();
         return;
       }
 
@@ -4389,8 +7103,141 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
+      if (control.id === "slidesEditorBackButton") {
+        handled();
+        closeSlidesEditor(true);
+        return;
+      }
+
+      if (control.id === "slidesCreateButton") {
+        handled();
+        createSlidesFromPastedLyrics();
+        return;
+      }
+
+      if (control.id === "slidesUseSongNotesButton") {
+        handled();
+        fillSlidesFromSongNotes();
+        return;
+      }
+
+      if (control.id === "slidesEditorPreviewButton") {
+        handled();
+        previewSlidesEditorSet();
+        return;
+      }
+
+      if (control.id === "slidesEditorReadyButton") {
+        handled();
+        markSlidesEditorReady();
+        return;
+      }
+
+      if (control.id === "slidesAddSlideButton") {
+        handled();
+        addSlidesEditorSlide();
+        return;
+      }
+
+      if (control.id === "slidesUndoButton") {
+        handled();
+        undoSlidesEditor();
+        return;
+      }
+
+      if (control.id === "slidesRedoButton") {
+        handled();
+        redoSlidesEditor();
+        return;
+      }
+
+      if (control.id === "slidesDuplicateButton") {
+        handled();
+        duplicateSlidesEditorSlide();
+        return;
+      }
+
+      if (control.id === "slidesSplitButton") {
+        handled();
+        splitSlidesEditorSlide();
+        return;
+      }
+
+      if (control.id === "slidesDeleteButton") {
+        handled();
+        deleteSlidesEditorSlide();
+        return;
+      }
+
+      if (control.id === "slidesMoveUpButton") {
+        handled();
+        moveSlidesEditorSlide(-1);
+        return;
+      }
+
+      if (control.id === "slidesMoveDownButton") {
+        handled();
+        moveSlidesEditorSlide(1);
+        return;
+      }
+
+      if (control.id === "slidesSentencePreviousButton") {
+        handled();
+        moveSlidesEditorLine("previous");
+        return;
+      }
+
+      if (control.id === "slidesSentenceNextButton") {
+        handled();
+        moveSlidesEditorLine("next");
+        return;
+      }
+
+      if (control.id === "slidesJoinPreviousButton") {
+        handled();
+        joinSlidesEditorSlide("previous");
+        return;
+      }
+
+      if (control.id === "slidesJoinNextButton") {
+        handled();
+        joinSlidesEditorSlide("next");
+        return;
+      }
+
+      if (control.id === "slidesFontDownButton") {
+        handled();
+        changeSlidesEditorFont(-4);
+        return;
+      }
+
+      if (control.id === "slidesFontUpButton") {
+        handled();
+        changeSlidesEditorFont(4);
+        return;
+      }
+
+      if (control.id === "slidesFitScreenButton") {
+        handled();
+        fitSlidesEditorFontToScreen();
+        return;
+      }
+
+      if (control.matches("[data-slide-index]")) {
+        handled();
+        selectSlidesEditorSlide(Number(control.dataset.slideIndex));
+        return;
+      }
+
+      if (control.matches("[data-slide-theme]")) {
+        handled();
+        setSlidesEditorTheme(control.dataset.slideTheme);
+        return;
+      }
+
       if (control.id === "showsTabButton") {
         handled();
+        els.headerMenu.open = false;
         setSidePanelMode(sidePanelMode === "shows" ? "library" : "shows");
         return;
       }
@@ -4441,6 +7288,12 @@ function bindEmergencyButtonDelegates() {
       if (control.id === "saveSongButton") {
         handled();
         saveSongFromDialog(event);
+        return;
+      }
+
+      if (control.id === "addOneTimeSongButton") {
+        handled();
+        addOneTimeSongFromDialog(event);
         return;
       }
 
@@ -4564,9 +7417,7 @@ function bindEmergencyButtonDelegates() {
         const lineupId = control.dataset.lineupId;
 
         if (action === "add-bank") {
-          if (isMobileLayout() && mobileLibraryExpanded) {
-            addSongToLineup(songId, true);
-          }
+          addSongToLineup(songId, true);
           return;
         }
 
@@ -4585,7 +7436,7 @@ function bindEmergencyButtonDelegates() {
           return;
         }
 
-        if (["ready", "info", "remove", "edit-note", "slides"].includes(action)) {
+        if (["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides"].includes(action)) {
           handleLineupAction(action, lineupId, songId || "");
           return;
         }
@@ -4623,8 +7474,9 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
-      if (control.id === "openLineupFileButton") {
+      if (control.id === "openLineupFileButton" || control.id === "openLineupFileMenuButton" || control.id === "openLineupFileSetlistsButton") {
         handled();
+        if (control.id === "openLineupFileMenuButton" && els.headerMenu) els.headerMenu.open = false;
         openLineupFile();
         return;
       }
@@ -4704,12 +7556,6 @@ function bindEmergencyButtonDelegates() {
   );
 }
 
-window.handleLineupAction = handleLineupAction;
-window.setLineupCapo = setLineupCapo;
-window.setLineupKey = setLineupKey;
-window.setLineupNote = setLineupNote;
-window.saveSongFromDialog = saveSongFromDialog;
-window.closeDialog = closeDialog;
 
 function startApp() {
   if (isMobileLayout()) {
@@ -4741,9 +7587,12 @@ function startApp() {
     applySkin(localStorage.getItem(skinStorageKey) || "simple");
 
     if (importedSharedLineup) {
-      toast("Shared lineup opened and saved here.");
+      finishIntro();
+      toast("Shared lineup opened safely and saved here.");
       history.replaceState(null, "", window.location.href.split("#")[0]);
-      if (!isMobileLayout()) maybeShowOnboardingTips();
+      ensureSignedInForApp().then((allowed) => {
+        if (allowed && !isMobileLayout()) maybeShowOnboardingTips();
+      });
     } else {
       showIntroThenStart();
     }

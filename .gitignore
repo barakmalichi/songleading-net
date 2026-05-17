@@ -16,3 +16,8 @@ lyric-slide-studio-mvp/
 marketing-video/
 screenshots/
 .vercel
+public/lineup/*.lineup
+public/lineup/*.lineupbackup
+public/lineup/test-exports/
+playwright-report/
+test-results/
