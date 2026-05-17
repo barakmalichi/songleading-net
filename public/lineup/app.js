@@ -1930,6 +1930,7 @@ function openSlidesEditorForLineup(lineupId) {
   renderSlidesEditor();
   openDialog(els.slidesEditorDialog);
   window.setTimeout(() => {
+    if (isMobileLayout()) return;
     if (activeSlidesDraft.length) els.slidesCurrentText?.focus();
     else els.slidesFullLyrics?.focus();
   }, 50);

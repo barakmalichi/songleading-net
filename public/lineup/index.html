@@ -24,7 +24,7 @@
     <link rel="manifest" href="/lineup/manifest.webmanifest?v=167" />
     <link rel="icon" href="/lineup/icon.svg?v=167" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/lineup/icon.svg?v=167" />
-    <link rel="stylesheet" href="/lineup/styles.css?v=168" />
+    <link rel="stylesheet" href="/lineup/styles.css?v=169" />
   </head>
   <body class="intro-active">
     <div id="lineupIntro" class="lineup-intro" role="status" aria-live="polite">
@@ -736,15 +736,19 @@
             <div class="slides-quick-actions" aria-label="Slide actions">
               <button class="ghost-button" type="button" id="slidesUndoButton" aria-label="Undo slide edit" title="Undo">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 1 1 0 10h-3"/></svg>
+                <span class="slides-mobile-action-label">Undo</span>
               </button>
               <button class="ghost-button" type="button" id="slidesRedoButton" aria-label="Redo slide edit" title="Redo">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l4-4-4-4"/><path d="M19 10h-9a5 5 0 1 0 0 10h3"/></svg>
+                <span class="slides-mobile-action-label">Redo</span>
               </button>
               <button class="ghost-button" type="button" id="slidesMoveUpButton" aria-label="Move slide up" title="Move up">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
+                <span class="slides-mobile-action-label">Up</span>
               </button>
               <button class="ghost-button" type="button" id="slidesMoveDownButton" aria-label="Move slide down" title="Move down">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="slides-mobile-action-label">Down</span>
               </button>
               <button class="ghost-button" type="button" id="slidesDuplicateButton" aria-label="Duplicate slide" title="Duplicate slide">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
@@ -757,6 +761,7 @@
               <button class="ghost-button" type="button" id="slidesJoinNextButton">Join next</button>
               <button class="danger-button" type="button" id="slidesDeleteButton" aria-label="Delete slide" title="Delete slide">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                <span class="slides-mobile-action-label">Delete</span>
               </button>
             </div>
           </main>
@@ -1072,6 +1077,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="/lineup/app.js?v=168"></script>
+    <script src="/lineup/app.js?v=169"></script>
   </body>
 </html>

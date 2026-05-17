@@ -2175,6 +2175,10 @@ textarea:focus {
   padding: 0 11px;
 }
 
+.slides-mobile-action-label {
+  display: none;
+}
+
 .slides-current-text {
   display: grid;
   min-height: 0;
@@ -6469,9 +6473,37 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-editor-header {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "back title title status"
+      "scope scope preview ready";
     gap: 8px;
-    padding: max(9px, env(safe-area-inset-top)) 10px 9px;
+    padding: max(9px, env(safe-area-inset-top)) 10px 10px;
+  }
+
+  #slidesEditorBackButton {
+    grid-area: back;
+  }
+
+  .slides-editor-title-block {
+    grid-area: title;
+  }
+
+  .slides-save-scope {
+    grid-area: scope;
+  }
+
+  .slides-editor-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .slides-editor-header .slides-editor-export {
+    grid-area: preview;
+  }
+
+  .slides-editor-header .slides-editor-ready {
+    grid-area: ready;
   }
 
   .slides-editor-title-block .eyebrow {
@@ -6491,30 +6523,29 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-save-scope select {
-    width: 104px;
-    height: 30px;
-    min-height: 30px;
-    padding: 0 6px;
-    font-size: 0.68rem;
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 0.74rem;
   }
 
   .slides-editor-status {
-    min-height: 28px;
-    padding: 0 8px;
+    min-height: 32px;
+    padding: 0 10px;
     font-size: 0.62rem;
   }
 
   .slides-editor-header .slides-editor-export,
   .slides-editor-header .slides-editor-ready {
     grid-column: span 1;
-    min-height: 34px;
-    padding: 0 9px;
-    font-size: 0.74rem;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 0.7rem;
   }
 
-  .slides-editor-header .slides-editor-export span,
-  .slides-editor-header .slides-editor-ready span {
-    display: none;
+  .slides-editor-header .slides-editor-export span {
+    display: inline;
   }
 
   .slides-editor-header .slides-editor-export:disabled,
@@ -6552,15 +6583,17 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-workspace-view {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 9px;
-    overflow: hidden;
-    padding: 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 9px 9px calc(18px + env(safe-area-inset-bottom, 0px));
   }
 
   .slides-strip {
     order: 2;
+    flex: 0 0 auto;
     gap: 8px;
     border-radius: 16px;
     padding: 8px;
@@ -6584,20 +6617,22 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-live-area {
-    order: 1;
-    grid-template-rows: auto auto;
-    min-height: 0;
+    display: contents;
   }
 
   .slides-live-preview-wrap {
-    padding: 8px;
+    order: 1;
+    flex: 0 0 auto;
+    min-height: 178px;
+    padding: 7px;
     border-radius: 16px;
   }
 
   .slides-live-preview {
     width: 100%;
+    max-height: 32dvh;
     border-radius: 14px;
-    padding: 26px 18px;
+    padding: 20px 16px;
   }
 
   .slides-live-lines {
@@ -6617,48 +6652,81 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-quick-actions {
+    order: 4;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    padding: 7px;
+    padding: 8px;
     border-radius: 15px;
   }
 
   .slides-quick-actions .ghost-button,
   .slides-quick-actions .danger-button {
+    flex-direction: column;
     min-width: 0;
-    min-height: 34px;
-    padding: 0 6px;
-    font-size: 0;
+    min-height: 50px;
+    padding: 5px 5px;
+    gap: 3px;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: normal;
+    text-align: center;
   }
 
+  .slides-quick-actions .ghost-button svg,
+  .slides-quick-actions .danger-button svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+
+  .slides-mobile-action-label,
   #slidesDuplicateButton span {
-    display: none;
+    display: block;
+    font-size: 0.58rem;
+    font-weight: 800;
+    line-height: 1.05;
   }
 
+  #slidesSplitButton,
+  #slidesSentencePreviousButton,
+  #slidesSentenceNextButton,
   #slidesJoinPreviousButton,
   #slidesJoinNextButton {
     grid-column: span 2;
-    font-size: 0.68rem;
+    min-height: 44px;
+  }
+
+  #slidesDeleteButton {
+    grid-column: span 2;
   }
 
   .slides-edit-panel {
     order: 3;
-    gap: 9px;
-    max-height: 32dvh;
-    overflow-y: auto;
+    display: grid;
+    flex: 0 0 auto;
+    grid-auto-rows: max-content;
+    gap: 12px;
+    max-height: none;
+    overflow: visible;
     border-radius: 16px;
-    padding: 9px;
+    padding: 10px;
+  }
+
+  .slides-current-text {
+    gap: 8px;
+    min-height: auto;
   }
 
   .slides-current-text textarea {
-    min-height: 96px;
-    font-size: 0.96rem;
+    min-height: 150px;
+    font-size: 1rem;
+    line-height: 1.38;
   }
 
   .slides-design-panel {
-    grid-template-columns: minmax(108px, 0.7fr) minmax(0, 1.3fr);
-    gap: 9px;
+    grid-template-columns: 1fr;
+    gap: 12px;
     align-items: start;
   }
 
@@ -6668,13 +6736,19 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   }
 
   .slides-size-control {
-    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    grid-template-columns: 42px minmax(58px, 76px) 42px minmax(118px, 1fr);
     gap: 6px;
   }
 
   .slides-size-control output {
-    height: 34px;
+    height: 38px;
     font-size: 0.78rem;
+  }
+
+  .slides-fit-button {
+    grid-column: auto;
+    min-height: 38px;
+    padding: 0 10px;
   }
 
   .slides-theme-buttons {
