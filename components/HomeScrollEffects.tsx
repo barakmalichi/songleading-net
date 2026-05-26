@@ -74,7 +74,7 @@ export function HomeScrollEffects() {
         points.push(start);
 
         const overflow = section.offsetHeight - window.innerHeight;
-        if (overflow > Math.max(140, window.innerHeight * 0.18)) {
+        if (overflow > 24) {
           points.push(clampScroll(section.offsetTop + overflow));
         }
       });

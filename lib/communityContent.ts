@@ -50,7 +50,7 @@ export const defaultCommunityContent: CommunityContent = {
       description: "Bring one song that works with a group and hear what other leaders are teaching, adapting, and bringing back."
     },
     {
-      title: "Placement Prep Session",
+      title: "Opportunity Prep Session",
       dateLabel: "Seasonal",
       format: "Online workshop",
       description: "A focused session for leaders and organizations getting ready for camps, retreats, services, and summer roles."
@@ -83,7 +83,8 @@ function normalizeEvents(value: unknown): CommunityEvent[] {
   const events = source
     .map((item): CommunityEvent | null => {
       const record = isRecord(item) ? item : {};
-      const title = cleanString(record.title);
+      const rawTitle = cleanString(record.title);
+      const title = rawTitle === "Placement Prep Session" ? "Opportunity Prep Session" : rawTitle;
       const description = cleanString(record.description);
       if (!title && !description) return null;
       const linkLabel = cleanString(record.linkLabel);

@@ -67,11 +67,23 @@ export const homepageContentStorageKey = "songleading-homepage-content";
 const previousAboutImagePath = "/media/generated/barak-about-portrait.png";
 const previousInlineAboutImagePrefix = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdp";
 const previousHeroText = "Plan, teach, gather ideas, and go on stage more prepared.";
+const previousMeetLineupSubheadline = "Meet Lineup: the setlist app built for songleaders.";
+const previousCurrentHeroText = "Build setlists in Lineup, browse songleading ideas, and go on stage more prepared.";
 const previousHeroPrimaryLabel = "Start Planning";
 const previousHeroSecondaryLabel = "Browse ideas";
+const previousResourcesTitle = "Useful ideas, ready to lead.";
+const previousResourcesText = "Fast prompts for planning, teaching, opening, and keeping the energy clear.";
+const previousTrainingTitle = "Master Songleading";
+const previousTrainingText = "The work is musical, social, spiritual, and practical. This space is built for the real-life parts of leading: choosing the right song, teaching it clearly, and knowing what the group needs next.";
+const previousTrainingSecondText = "Training should feel usable right away: better song choices, stronger teaching moments, cleaner transitions, and a leader who can read the room without losing the music.";
 const previousToolsTitle = "Plan the moment before you lead it.";
+const previousCurrentToolsTitle = "Use Lineup before you lead.";
 const previousToolsText = "The Lineup app lives here as a working tool: song bank, show order, notes, capo, keys, exports, and connected lyric slides.";
+const previousCurrentToolsText = "Build the setlist, pull from your song bank, add notes, prep keys and capo, export, and make connected lyric slides.";
 const previousToolsButtonLabel = "Start Planning";
+const previousCommunityTitle = "Every voice\nis a part of something bigger.";
+const previousCommunityText = "Songleading is about helping people hear themselves together. This is about togetherness: warm, useful, and built around real gatherings.";
+const previousCommunitySecondText = "The strongest moments usually feel simple from the outside: a song lands, people join, and the gathering starts to feel like it belongs to everyone.";
 
 export const defaultHomepageAboutContent: HomepageAboutContent = {
   name: "Barak Malichi",
@@ -87,7 +99,7 @@ export const defaultHomepageContent: HomepageContent = {
     headlinePrefix: "The home of modern",
     shineWord: "SONGLEADING",
     subheadline: "Plan smarter. Lead better. Make them sing.",
-    text: "Build setlists in Lineup, browse songleading ideas, and go on stage more prepared.",
+    text: "Try Lineup - the setlist app built for songleaders. Plan shows, organize your song bank, prep keys, capo, notes, sheets, and lyric slides before you lead.",
     primaryLabel: "Open Lineup",
     secondaryLabel: "Browse Toolkit"
   },
@@ -97,8 +109,8 @@ export const defaultHomepageContent: HomepageContent = {
     imageTitle: "A resource desk before you lead.",
     badges: ["Plan", "Build", "Sing"],
     eyebrow: "Resources",
-    title: "Useful ideas, ready to lead.",
-    text: "Fast prompts for planning, teaching, opening, and keeping the energy clear.",
+    title: "Fast ideas for the next set.",
+    text: "Guides, activities, songs, and playlist starts that move quickly from idea to usable plan.",
     cards: [
       {
         title: "Setlist planning",
@@ -129,15 +141,15 @@ export const defaultHomepageContent: HomepageContent = {
   training: {
     image: "/media/generated/training-workshop.png",
     eyebrow: "Training",
-    title: "Master Songleading",
-    text: "The work is musical, social, spiritual, and practical. This space is built for the real-life parts of leading: choosing the right song, teaching it clearly, and knowing what the group needs next.",
-    secondText: "Training should feel usable right away: better song choices, stronger teaching moments, cleaner transitions, and a leader who can read the room without losing the music.",
+    title: "Practice the parts people actually feel.",
+    text: "Get sharper at choosing songs, teaching them clearly, building transitions, and reading the group while the music is happening.",
+    secondText: "Training is built for camps, services, retreats, schools, and staff teams that need practical growth quickly.",
     pills: ["Camps", "Youth groups", "Schools", "Services", "Retreats", "Staff training"]
   },
   tools: {
-    eyebrow: "Tools",
-    title: "Use Lineup before you lead.",
-    text: "Build the setlist, pull from your song bank, add notes, prep keys and capo, export, and make connected lyric slides.",
+    eyebrow: "Lineup App",
+    title: "A real app for the work before the song.",
+    text: "Lineup keeps your setlists, song bank, sheets, notes, keys, capo choices, exports, and lyric slides in one place.",
     buttonLabel: "Open Lineup",
     previewEyebrow: "Lineup",
     previewTitle: "Friday Night Set"
@@ -145,9 +157,9 @@ export const defaultHomepageContent: HomepageContent = {
   community: {
     image: "/media/generated/community-circle.png",
     eyebrow: "Community",
-    title: "Every voice\nis a part of something bigger.",
-    text: "Songleading is about helping people hear themselves together. This is about togetherness: warm, useful, and built around real gatherings.",
-    secondText: "The strongest moments usually feel simple from the outside: a song lands, people join, and the gathering starts to feel like it belongs to everyone."
+    title: "Track what is happening\nand who is leading.",
+    text: "Use Community to follow events, discover featured songleaders, and keep useful ideas moving between people who lead groups.",
+    secondText: "It is a calmer gathering point: real events, real profiles when ready, and practical ways to share what works."
   },
   about: defaultHomepageAboutContent,
   footer: {
@@ -230,8 +242,8 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
       image: cleanString(hero.image, defaultHomepageContent.hero.image),
       headlinePrefix: cleanString(hero.headlinePrefix, defaultHomepageContent.hero.headlinePrefix),
       shineWord: cleanString(hero.shineWord, defaultHomepageContent.hero.shineWord),
-      subheadline: cleanString(hero.subheadline, defaultHomepageContent.hero.subheadline),
-      text: cleanStringWithPrevious(hero.text, defaultHomepageContent.hero.text, [previousHeroText]),
+      subheadline: cleanStringWithPrevious(hero.subheadline, defaultHomepageContent.hero.subheadline, [previousMeetLineupSubheadline]),
+      text: cleanStringWithPrevious(hero.text, defaultHomepageContent.hero.text, [previousHeroText, previousCurrentHeroText]),
       primaryLabel: cleanStringWithPrevious(hero.primaryLabel, defaultHomepageContent.hero.primaryLabel, [previousHeroPrimaryLabel]),
       secondaryLabel: cleanStringWithPrevious(hero.secondaryLabel, defaultHomepageContent.hero.secondaryLabel, [previousHeroSecondaryLabel])
     },
@@ -241,22 +253,22 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
       imageTitle: cleanString(resources.imageTitle, defaultHomepageContent.resources.imageTitle),
       badges: cleanStringArray(resources.badges, defaultHomepageContent.resources.badges, 4),
       eyebrow: cleanString(resources.eyebrow, defaultHomepageContent.resources.eyebrow),
-      title: cleanString(resources.title, defaultHomepageContent.resources.title),
-      text: cleanString(resources.text, defaultHomepageContent.resources.text),
+      title: cleanStringWithPrevious(resources.title, defaultHomepageContent.resources.title, [previousResourcesTitle]),
+      text: cleanStringWithPrevious(resources.text, defaultHomepageContent.resources.text, [previousResourcesText]),
       cards: cleanCards(resources.cards, defaultHomepageContent.resources.cards)
     },
     training: {
       image: cleanString(training.image, defaultHomepageContent.training.image),
       eyebrow: cleanString(training.eyebrow, defaultHomepageContent.training.eyebrow),
-      title: cleanString(training.title, defaultHomepageContent.training.title),
-      text: cleanString(training.text, defaultHomepageContent.training.text),
-      secondText: cleanString(training.secondText, defaultHomepageContent.training.secondText),
+      title: cleanStringWithPrevious(training.title, defaultHomepageContent.training.title, [previousTrainingTitle]),
+      text: cleanStringWithPrevious(training.text, defaultHomepageContent.training.text, [previousTrainingText]),
+      secondText: cleanStringWithPrevious(training.secondText, defaultHomepageContent.training.secondText, [previousTrainingSecondText]),
       pills: cleanStringArray(training.pills, defaultHomepageContent.training.pills, 8)
     },
     tools: {
       eyebrow: cleanString(tools.eyebrow, defaultHomepageContent.tools.eyebrow),
-      title: cleanStringWithPrevious(tools.title, defaultHomepageContent.tools.title, [previousToolsTitle]),
-      text: cleanStringWithPrevious(tools.text, defaultHomepageContent.tools.text, [previousToolsText]),
+      title: cleanStringWithPrevious(tools.title, defaultHomepageContent.tools.title, [previousToolsTitle, previousCurrentToolsTitle]),
+      text: cleanStringWithPrevious(tools.text, defaultHomepageContent.tools.text, [previousToolsText, previousCurrentToolsText]),
       buttonLabel: cleanStringWithPrevious(tools.buttonLabel, defaultHomepageContent.tools.buttonLabel, [previousToolsButtonLabel]),
       previewEyebrow: cleanString(tools.previewEyebrow, defaultHomepageContent.tools.previewEyebrow),
       previewTitle: cleanString(tools.previewTitle, defaultHomepageContent.tools.previewTitle)
@@ -264,9 +276,9 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
     community: {
       image: cleanString(community.image, defaultHomepageContent.community.image),
       eyebrow: cleanString(community.eyebrow, defaultHomepageContent.community.eyebrow),
-      title: cleanString(community.title, defaultHomepageContent.community.title),
-      text: cleanString(community.text, defaultHomepageContent.community.text),
-      secondText: cleanString(community.secondText, defaultHomepageContent.community.secondText)
+      title: cleanStringWithPrevious(community.title, defaultHomepageContent.community.title, [previousCommunityTitle]),
+      text: cleanStringWithPrevious(community.text, defaultHomepageContent.community.text, [previousCommunityText]),
+      secondText: cleanStringWithPrevious(community.secondText, defaultHomepageContent.community.secondText, [previousCommunitySecondText])
     },
     about: normalizeHomepageAboutContent(source.about || {}),
     footer: {

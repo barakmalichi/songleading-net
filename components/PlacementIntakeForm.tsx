@@ -54,7 +54,7 @@ function formatMessage(track: PlacementTrack, values: Record<string, string>, po
     ];
 
   return [
-    `Placement track: ${trackLabels[track]}`,
+    `Opportunity track: ${trackLabels[track]}`,
     "",
     ...lines.map(([label, value]) => `${label}: ${value || "-"}`)
   ].join("\n");
@@ -101,11 +101,11 @@ export function PlacementIntakeForm({ track }: { track: PlacementTrack }) {
         })
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "Could not send this placement note.");
-      setMessage("Sent. Barak can follow up from the placement inbox.");
+      if (!response.ok) throw new Error(payload.error || "Could not send this opportunity note.");
+      setMessage("Sent. Barak can follow up from the opportunities inbox.");
       setValues((current) => Object.fromEntries(Object.keys(current).map((key) => [key, ""])));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not send this placement note.");
+      setMessage(error instanceof Error ? error.message : "Could not send this opportunity note.");
     } finally {
       setBusy(false);
     }
@@ -114,7 +114,7 @@ export function PlacementIntakeForm({ track }: { track: PlacementTrack }) {
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xl shadow-blue-950/8">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Placement intake</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Opportunity intake</p>
         <h2 className="mt-1 text-2xl font-black">{trackLabels[track]}</h2>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -144,7 +144,7 @@ export function PlacementIntakeForm({ track }: { track: PlacementTrack }) {
           <Field label="Links" value={values.links} onChange={(value) => update("links", value)} placeholder="Website, video, Instagram, recordings" />
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-black text-slate-700">
             <input type="checkbox" checked={poolPermission} onChange={(event) => setPoolPermission(event.target.checked)} className="mt-1" />
-            Barak may keep me in a private pool for relevant songleading placements.
+            Barak may keep me in a private pool for relevant songleading opportunities.
           </label>
         </>
       )}
@@ -159,7 +159,7 @@ export function PlacementIntakeForm({ track }: { track: PlacementTrack }) {
       ) : null}
 
       <button type="submit" disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-4 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-60">
-        {busy ? "Sending..." : "Send placement note"}
+        {busy ? "Sending..." : "Send opportunity note"}
         <Send size={17} />
       </button>
     </form>

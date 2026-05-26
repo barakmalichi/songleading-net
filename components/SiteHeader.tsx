@@ -29,13 +29,13 @@ const navItems: NavItem[] = [
     label: "Community",
     href: "/community",
     icon: UsersRound,
-    description: "A growing hub for songleaders, educators, events, and shared practice."
+    description: "Events, featured songleaders, shared ideas, and practical ways to stay connected."
   },
   {
-    label: "Placements",
-    href: "/placements",
+    label: "Opportunities",
+    href: "/opportunities",
     icon: BriefcaseBusiness,
-    description: "A private matching pool for finding songleading opportunities or hiring the right leader."
+    description: "A private matching pool for hiring a songleader or finding your next role."
   }
 ];
 

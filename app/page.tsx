@@ -1,11 +1,15 @@
 import {
+  AppWindow,
   ArrowRight,
   BookOpenText,
   BriefcaseBusiness,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   LibraryBig,
+  Music4,
   Rows3,
+  Sparkles,
   UsersRound
 } from "lucide-react";
 import Image from "next/image";
@@ -67,7 +71,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/35 to-slate-950/88" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.25),transparent_30%)]" />
 
-        <div className="hero-content relative z-10 mx-auto flex min-h-[74vh] w-full max-w-7xl items-center px-5 pb-16 pt-8 md:px-8">
+        <div className="hero-content relative z-10 mx-auto grid min-h-[74vh] w-full max-w-7xl items-center gap-8 px-5 pb-16 pt-8 md:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.58fr)]">
           <div className="hero-copy hero-copy-modern">
             <h1 className="hero-heading max-w-5xl text-5xl font-black leading-[0.94] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
               <span data-home-text="hero.headlinePrefix">{content.hero.headlinePrefix}</span>{" "}
@@ -91,6 +95,56 @@ export default function HomePage() {
               >
                 <span data-home-text="hero.secondaryLabel">{content.hero.secondaryLabel}</span>
                 <ChevronRight size={18} />
+              </a>
+            </div>
+          </div>
+          <div className="hero-lineup-stage" aria-label="Lineup app preview">
+            <div className="hero-lineup-glow" aria-hidden="true" />
+            <div className="hero-lineup-window">
+              <div className="hero-lineup-topbar">
+                <div className="flex min-w-0 items-center gap-3">
+                  <img src="/lineup/icon.svg" alt="" className="h-10 w-10 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-200">Lineup App</p>
+                    <h2 className="text-2xl font-black leading-tight tracking-tight">Friday Night</h2>
+                  </div>
+                </div>
+                <span className="hero-lineup-live">
+                  <Sparkles size={14} />
+                  Real app
+                </span>
+              </div>
+              <div className="hero-lineup-board">
+                {[
+                  ["01", "Opening nigun", "Warm start", "G"],
+                  ["02", "Hashkiveinu", "Slides ready", "E"],
+                  ["03", "Bring them in", "Group moment", "D"]
+                ].map(([number, title, note, songKey]) => (
+                  <div key={title} className="hero-lineup-row">
+                    <span>{number}</span>
+                    <div>
+                      <strong>{title}</strong>
+                      <small>{note}</small>
+                    </div>
+                    <b>{songKey}</b>
+                  </div>
+                ))}
+              </div>
+              <div className="hero-lineup-tools">
+                {[
+                  ["Song bank", <Music4 key="song-bank" size={16} />],
+                  ["Slides", <AppWindow key="slides" size={16} />],
+                  ["Export", <CheckCircle2 key="export" size={16} />]
+                ].map(([label, icon]) => (
+                  <span key={String(label)}>
+                    {icon}
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <a href="/lineup/index.html" className="hero-lineup-action">
+                Try Lineup now
+                <ArrowRight size={18} />
               </a>
             </div>
           </div>
@@ -137,7 +191,6 @@ export default function HomePage() {
                     <BookOpenText size={20} className="mt-1 shrink-0 text-blue-600" />
                     <div>
                       <h3 className="motion-title text-lg font-black" data-home-card-field="title">{item.title}</h3>
-                      <p className="mt-1 text-sm font-bold leading-5 text-slate-600" data-home-card-field="text">{item.text}</p>
                     </div>
                   </div>
                 </article>
@@ -148,8 +201,8 @@ export default function HomePage() {
                 Explore the Songleader Toolkit
                 <LibraryBig size={18} />
               </a>
-              <a href="/placements" className="motion-copy inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white/80 px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:border-blue-400">
-                Songleader placements
+              <a href="/opportunities" className="motion-copy inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white/80 px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:border-blue-400">
+                Explore Opportunities
                 <BriefcaseBusiness size={18} />
               </a>
             </div>

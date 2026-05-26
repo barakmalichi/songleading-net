@@ -16,25 +16,25 @@ const placementCopy: Record<PlacementTrack, {
   bullets: Array<{ icon: React.ReactNode; title: string; text: string }>;
 }> = {
   songleader: {
-    eyebrow: "Find a Placement",
+    eyebrow: "I'm a songleader",
     title: "Let the right camp or community know you are available.",
     text: "Share your timing, location, experience, instruments, and links in one focused place so matching starts with the right context.",
     formIntro: "For songleaders looking for summer work, weekends, services, one-off events, staff training, or community moments.",
-    siblingHref: "/placements/hire-a-songleader",
-    siblingLabel: "I need to hire a songleader",
+    siblingHref: "/opportunities/hire-a-songleader",
+    siblingLabel: "I'm looking for a songleader",
     bullets: [
-      { icon: <Music2 size={19} />, title: "Your availability", text: "Timing, travel range, and the kinds of rooms you can lead." },
+      { icon: <Music2 size={19} />, title: "Your availability", text: "Timing, travel range, and the kinds of groups you can lead." },
       { icon: <MapPin size={19} />, title: "Your setting", text: "Camp, synagogue, school, retreat, Israel program, or community work." },
       { icon: <UsersRound size={19} />, title: "Your fit", text: "Experience, instruments, links, and any useful context." }
     ]
   },
   camp: {
-    eyebrow: "Hire a Songleader",
-    title: "Find a songleader for the room you are building.",
-    text: "Share the setting, dates, location, and role so the placement note is immediately useful instead of becoming a back-and-forth guessing game.",
+    eyebrow: "I'm looking for a songleader",
+    title: "Find a songleader for the group you are building.",
+    text: "Share the setting, dates, location, and role so the first note is useful and easy to act on.",
     formIntro: "For camps, synagogues, schools, retreats, and organizations looking for songleading support.",
-    siblingHref: "/placements/find-a-placement",
-    siblingLabel: "I am a songleader looking for placement",
+    siblingHref: "/opportunities/im-a-songleader",
+    siblingLabel: "I'm a songleader",
     bullets: [
       { icon: <BriefcaseBusiness size={19} />, title: "The role", text: "Song sessions, services, weekends, staff training, or special programs." },
       { icon: <MapPin size={19} />, title: "The context", text: "Dates, location, audience, budget range, and setting." },
@@ -54,9 +54,9 @@ export function PlacementPathPage({ track }: { track: PlacementTrack }) {
         <div className="relative mx-auto grid max-w-7xl gap-8 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-7 shadow-2xl shadow-blue-950/10 md:p-10 lg:grid-cols-[1fr_0.72fr] lg:items-end">
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,0.12),transparent_42%),radial-gradient(circle_at_86%_18%,rgba(20,184,166,0.18),transparent_32%)]" />
           <div className="relative">
-            <Link href="/placements" className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
+            <Link href="/opportunities" className="inline-flex items-center gap-2 text-sm font-black text-blue-700">
               <ArrowLeft size={17} />
-              Placements overview
+              Opportunities overview
             </Link>
             <p className="mt-6 text-sm font-black uppercase tracking-[0.24em] text-blue-600">{copy.eyebrow}</p>
             <h1 className="mt-4 max-w-4xl text-5xl font-black leading-[0.94] tracking-tight md:text-7xl">{copy.title}</h1>

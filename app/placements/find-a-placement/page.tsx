@@ -1,7 +1,7 @@
-import { PlacementPathPage } from "@/components/PlacementPathPage";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function FindAPlacementPage() {
-  return <PlacementPathPage track="songleader" />;
+  redirect("/opportunities/im-a-songleader");
 }

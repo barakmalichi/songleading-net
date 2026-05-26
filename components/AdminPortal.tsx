@@ -655,7 +655,7 @@ export function AdminPortal() {
               </p>
               <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl md:text-6xl">Admin Portal</h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-white/70">
-                Messages, placement notes, users, and permanent site edits in one mobile-first control center.
+                Messages, opportunity notes, users, and permanent site edits in one mobile-first control center.
               </p>
             </div>
             <a href="/" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/16 bg-white/10 px-4 py-3 text-sm font-black text-white hover:bg-white/16">
@@ -676,7 +676,7 @@ export function AdminPortal() {
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard label="Users" value={data.users.length} tone="slate" />
               <StatCard label="Cloud workspaces" value={data.workspaceCount} tone="blue" />
-              <StatCard label="Placements" value={placementContacts.length} tone="emerald" />
+              <StatCard label="Opportunities" value={placementContacts.length} tone="emerald" />
               <StatCard label="Messages" value={regularContacts.length} tone="amber" />
             </section>
 
@@ -685,8 +685,8 @@ export function AdminPortal() {
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Control center</p>
                 <h2 className="mt-2 text-3xl font-black tracking-tight">What needs attention first?</h2>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <a href="#placements" className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-black text-blue-950 hover:border-blue-300">
-                    Placement inquiries
+                  <a href="#opportunities" className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-black text-blue-950 hover:border-blue-300">
+                    Opportunity inquiries
                     <BriefcaseBusiness size={18} />
                   </a>
                   <a href="#contacts" className="flex items-center justify-between gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-black text-amber-950 hover:border-amber-300">
@@ -722,12 +722,12 @@ export function AdminPortal() {
               </article>
             </section>
 
-            <SectionCard id="placements" eyebrow="Communication" title="Placement Inquiries">
+            <SectionCard id="opportunities" eyebrow="Communication" title="Opportunity Inquiries">
               <div className="grid gap-3">
                 {placementContacts.length ? placementContacts.map((contact) => (
                   <ContactCard key={contact.id} contact={contact} placement />
                 )) : (
-                  <EmptyState>No placement inquiries yet.</EmptyState>
+                  <EmptyState>No opportunity inquiries yet.</EmptyState>
                 )}
               </div>
             </SectionCard>

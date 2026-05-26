@@ -3780,6 +3780,7 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
   isolation: isolate;
   transform: translate(-50%, -50%);
   width: min(560px, calc(100vw - 28px));
+  margin: 0;
   border: 1px solid var(--line-strong);
   border-radius: 16px;
   padding: 0;
@@ -4140,6 +4141,9 @@ body.auth-required #accountDialog .dialog-header [data-close-dialog] {
 }
 
 .sheets-dialog {
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
   width: min(1120px, calc(100vw - 28px));
   height: min(820px, calc(100dvh - 28px));
   max-height: calc(100dvh - 28px);
