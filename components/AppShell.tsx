@@ -7,7 +7,7 @@ import { StudioProvider } from "./StudioProvider";
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <StudioProvider>
-      <div className="min-h-screen bg-[#f7f4ee] text-slate-950">
+      <div className="site-theme-page min-h-screen bg-[#f7f4ee] text-slate-950">
         <header className="no-print sticky top-0 z-20 border-b border-slate-200 bg-[#faf8f3]/95 backdrop-blur">
           <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-3">
             <Link href="/" className="flex items-center gap-3 font-display text-lg font-black">

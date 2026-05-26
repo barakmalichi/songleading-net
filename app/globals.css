@@ -955,6 +955,106 @@ html[data-site-theme="dark"] .home-theme-toggle:hover {
   background: rgba(30, 41, 59, 0.9);
 }
 
+html[data-site-theme="dark"] .site-theme-page {
+  background:
+    linear-gradient(122deg, rgba(59, 130, 246, 0.16), transparent 30%, rgba(20, 184, 166, 0.1) 58%, transparent 78%),
+    linear-gradient(180deg, #0b1220 0%, #070b12 52%, #0d1524 100%) !important;
+  color: #f8fafc;
+  color-scheme: dark;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where([class~="bg-[#eef4f8]"], [class~="bg-[#f4f8fb]"], [class~="bg-[#f6fafb]"], [class~="bg-[#f6f7f4]"], [class~="bg-[#f7f4ee]"], [class~="bg-[#faf8f3]"], [class~="bg-[#faf8f3]/95"]) {
+  background: rgba(7, 11, 18, 0.94) !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.bg-white, .bg-white\/70, .bg-white\/76, .bg-white\/78, .bg-white\/80, .bg-white\/82, .bg-white\/88, .bg-white\/90, .bg-white\/92) {
+  background: rgba(15, 23, 42, 0.82) !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.bg-slate-50, .bg-slate-50\/80, .bg-slate-50\/88, .bg-slate-100, .bg-blue-50, .bg-emerald-50, .bg-amber-50) {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.border-slate-100, .border-slate-200, .border-slate-200\/80, .border-slate-300, .border-slate-300\/80, .border-blue-100, .border-amber-100, .border-emerald-100) {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-blue-950, .text-amber-950) {
+  color: #f8fafc !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.text-slate-600, .text-slate-500, .text-slate-400) {
+  color: #cbd5e1 !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.text-blue-700, .text-blue-600) {
+  color: #93c5fd !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.text-emerald-700, .text-emerald-600) {
+  color: #6ee7b7 !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.text-amber-900) {
+  color: #fde68a !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(input, textarea, select) {
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  background: rgba(15, 23, 42, 0.86) !important;
+  color: #f8fafc !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page input::placeholder,
+html[data-site-theme="dark"] .site-theme-page textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.toolkit-prose, .toolkit-guide-nav, .toolkit-related-steps) {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  color: #cbd5e1 !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.toolkit-prose h2, .toolkit-breadcrumbs strong, .toolkit-related-card strong, .toolkit-guide-link) {
+  color: #f8fafc;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.toolkit-guide-link small, .toolkit-related-card small, .toolkit-breadcrumbs) {
+  color: #cbd5e1;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.toolkit-guide-link:hover, .toolkit-guide-link.is-active, .toolkit-related-card:hover) {
+  border-color: rgba(96, 165, 250, 0.42);
+  background: rgba(37, 99, 235, 0.24);
+}
+
+html[data-site-theme="dark"] .site-theme-page .toolkit-guide-link.is-active {
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  color: #ffffff;
+}
+
+html[data-site-theme="dark"] .site-theme-page .toolkit-related-card {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.58);
+  color: #f8fafc;
+}
+
+html[data-site-theme="dark"] .site-theme-page .bg-slate-950 :where(.bg-white, a.bg-white, button.bg-white),
+html[data-site-theme="dark"] .site-theme-page :where(.bg-slate-950 a.bg-white, .bg-slate-950 button.bg-white) {
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #0f172a !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page .bg-slate-950 :where(.text-slate-950, .text-slate-900, .text-slate-800) {
+  color: #0f172a !important;
+}
+
+html[data-site-theme="dark"] .site-theme-page :where(.primary-button, .bg-slate-950) {
+  border-color: rgba(147, 197, 253, 0.18);
+}
+
 .hero-art {
   object-position: center 42%;
   transform-origin: center;

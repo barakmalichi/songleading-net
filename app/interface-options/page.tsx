@@ -243,7 +243,7 @@ export default function InterfaceOptionsPage() {
   const [selected, setSelected] = useState("board");
 
   return (
-    <main className="min-h-screen bg-[#f6f7f4] px-4 py-6 text-slate-950">
+    <main className="site-theme-page min-h-screen bg-[#f6f7f4] px-4 py-6 text-slate-950">
       <div className="mx-auto max-w-[1500px] space-y-5">
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
           <div>

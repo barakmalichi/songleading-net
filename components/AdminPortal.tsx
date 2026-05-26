@@ -644,7 +644,7 @@ export function AdminPortal() {
   const recentContacts = useMemo(() => [...placementContacts, ...regularContacts].slice(0, 4), [placementContacts, regularContacts]);
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(135deg,#eef7fb_0%,#f7f2e7_48%,#eef4ff_100%)] px-3 py-4 text-slate-950 sm:px-5 md:px-8">
+    <main className="site-theme-page min-h-screen bg-[linear-gradient(135deg,#eef7fb_0%,#f7f2e7_48%,#eef4ff_100%)] px-3 py-4 text-slate-950 sm:px-5 md:px-8">
       <div className="mx-auto max-w-7xl">
         <header className="overflow-hidden rounded-3xl border border-white/70 bg-slate-950 text-white shadow-2xl shadow-blue-950/18">
           <div className="grid gap-5 p-5 sm:p-7 lg:grid-cols-[1fr_auto] lg:items-end">

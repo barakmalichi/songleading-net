@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function ArticlesPage() {
   const items = (await readToolkitItems()).filter((item) => item.kind === "article");
   return (
-    <main className="min-h-screen bg-[#eef4f8] text-slate-950">
+    <main className="site-theme-page min-h-screen bg-[#eef4f8] text-slate-950">
       <MarketingHeader />
       <ToolkitListPageHeader
         kind="article"

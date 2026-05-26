@@ -47,7 +47,7 @@ export function PlacementPathPage({ track }: { track: PlacementTrack }) {
   const copy = placementCopy[track];
 
   return (
-    <main className="min-h-screen bg-[#f4f8fb] text-slate-950">
+    <main className="site-theme-page min-h-screen bg-[#f4f8fb] text-slate-950">
       <SiteHeader />
       <section className="relative overflow-hidden px-5 pb-10 pt-28 md:px-8 md:pb-14 md:pt-36">
         <div className="absolute inset-x-0 top-0 h-48 bg-slate-950" />

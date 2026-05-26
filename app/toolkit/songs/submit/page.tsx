@@ -4,7 +4,7 @@ import { ToolkitSubmitForm } from "@/components/ToolkitSubmitForm";
 
 export default function SubmitSongPage() {
   return (
-    <main className="min-h-screen bg-[#eef4f8] text-slate-950">
+    <main className="site-theme-page min-h-screen bg-[#eef4f8] text-slate-950">
       <MarketingHeader />
       <section className="toolkit-list-header mx-auto max-w-7xl px-5 pb-6 pt-28 md:px-8 md:pt-36">
         <ToolkitBreadcrumbs current="Suggest a Song" kind="song" />

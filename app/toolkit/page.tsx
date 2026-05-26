@@ -39,7 +39,7 @@ const toolkitCards = [
 
 export default function ToolkitPage() {
   return (
-    <main className="min-h-screen bg-[#eef4f8] text-slate-950 lg:h-screen lg:overflow-hidden">
+    <main className="site-theme-page min-h-screen bg-[#eef4f8] text-slate-950 lg:h-screen lg:overflow-hidden">
       <MarketingHeader />
       <section className="relative grid min-h-screen place-items-center overflow-hidden px-5 py-24 md:px-8 md:py-28 lg:h-full">
         <div className="absolute inset-x-0 top-0 h-44 bg-slate-950" />

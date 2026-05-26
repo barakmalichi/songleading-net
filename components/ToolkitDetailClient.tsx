@@ -146,7 +146,7 @@ export function ToolkitDetailClient({ kind, slug }: { kind: ToolkitKind; slug: s
 
   if (!item) {
     return (
-      <main className="min-h-screen bg-[#eef4f8] px-5 py-28 text-slate-950 md:px-8">
+      <main className="site-theme-page min-h-screen bg-[#eef4f8] px-5 py-28 text-slate-950 md:px-8">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
           <aside className="toolkit-guide-sidebar">
             <ToolkitGuidebookNav active={kind} />
@@ -166,7 +166,7 @@ export function ToolkitDetailClient({ kind, slug }: { kind: ToolkitKind; slug: s
   }
 
   return (
-    <main className="min-h-screen bg-[#eef4f8] px-5 pb-16 pt-28 text-slate-950 md:px-8 md:pt-36">
+    <main className="site-theme-page min-h-screen bg-[#eef4f8] px-5 pb-16 pt-28 text-slate-950 md:px-8 md:pt-36">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <aside className="toolkit-guide-sidebar">
           <ToolkitGuidebookNav active={item.kind} />
