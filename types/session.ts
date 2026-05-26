@@ -1,6 +1,6 @@
 import type { DesignSettings, SelectedSectionInstance } from "./song";
 
-export type SlidesStatus = "no-slides" | "slides-ready" | "needs-review";
+export type SlidesStatus = "no-slides" | "slides-ready" | "needs-review"; // needs-review is accepted only for legacy saved data.
 
 export interface SessionSong {
   id: string;

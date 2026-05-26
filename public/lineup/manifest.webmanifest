@@ -1,9 +1,12 @@
 {
   "name": "Lineup",
   "short_name": "Lineup",
+  "id": "/lineup/",
+  "description": "Build and lead song lineups with connected slides.",
   "start_url": "/lineup/",
   "scope": "/lineup/",
   "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
   "background_color": "#060909",
   "theme_color": "#060909",
   "orientation": "portrait",

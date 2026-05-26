@@ -93,7 +93,7 @@ export function DesignControls({
           placeholder="Optional image URL"
         />
       </label>
-      <Control label="Font size" value={design.fontSize} min={28} max={88} onChange={(fontSize) => onChange({ ...design, fontSize })} />
+      <Control label="Font size" value={design.fontSize} min={28} max={320} onChange={(fontSize) => onChange({ ...design, fontSize })} />
       <Control label="Text box width" value={design.textBoxWidth} min={42} max={100} onChange={(textBoxWidth) => onChange({ ...design, textBoxWidth })} />
       <Control label="Line spacing" value={Math.round(design.lineSpacing * 100)} min={90} max={170} onChange={(lineSpacing) => onChange({ ...design, lineSpacing: lineSpacing / 100 })} />
       <Control label="Margins" value={design.margins} min={2} max={14} onChange={(margins) => onChange({ ...design, margins })} />
