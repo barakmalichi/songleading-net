@@ -81,6 +81,7 @@ const previousCurrentToolsTitle = "Use Lineup before you lead.";
 const previousToolsText = "The Lineup app lives here as a working tool: song bank, show order, notes, capo, keys, exports, and connected lyric slides.";
 const previousCurrentToolsText = "Build the setlist, pull from your song bank, add notes, prep keys and capo, export, and make connected lyric slides.";
 const previousToolsButtonLabel = "Start Planning";
+const previousToolsPreviewTitle = "Friday Night Set";
 const previousCommunityTitle = "Every voice\nis a part of something bigger.";
 const previousCommunityText = "Songleading is about helping people hear themselves together. This is about togetherness: warm, useful, and built around real gatherings.";
 const previousCommunitySecondText = "The strongest moments usually feel simple from the outside: a song lands, people join, and the gathering starts to feel like it belongs to everyone.";
@@ -152,7 +153,7 @@ export const defaultHomepageContent: HomepageContent = {
     text: "Lineup keeps your setlists, song bank, sheets, notes, keys, capo choices, exports, and lyric slides in one place.",
     buttonLabel: "Open Lineup",
     previewEyebrow: "Lineup",
-    previewTitle: "Friday Night Set"
+    previewTitle: "Friday Night"
   },
   community: {
     image: "/media/generated/community-circle.png",
@@ -271,7 +272,7 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
       text: cleanStringWithPrevious(tools.text, defaultHomepageContent.tools.text, [previousToolsText, previousCurrentToolsText]),
       buttonLabel: cleanStringWithPrevious(tools.buttonLabel, defaultHomepageContent.tools.buttonLabel, [previousToolsButtonLabel]),
       previewEyebrow: cleanString(tools.previewEyebrow, defaultHomepageContent.tools.previewEyebrow),
-      previewTitle: cleanString(tools.previewTitle, defaultHomepageContent.tools.previewTitle)
+      previewTitle: cleanStringWithPrevious(tools.previewTitle, defaultHomepageContent.tools.previewTitle, [previousToolsPreviewTitle])
     },
     community: {
       image: cleanString(community.image, defaultHomepageContent.community.image),
