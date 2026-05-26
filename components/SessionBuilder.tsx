@@ -152,6 +152,9 @@ export function SessionBuilder({ session }: { session: Session }) {
               .map((item, index) => {
                 const song = songs.find((candidate) => candidate.id === item.songId);
                 if (!song) return null;
+                const slideStatusValue = item.slidesStatus === "needs-review"
+                  ? "slides-ready"
+                  : item.slidesStatus ?? "no-slides";
                 return (
                   <div key={item.id} className="rounded-lg border border-white/10 bg-[#181c20] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -179,7 +182,7 @@ export function SessionBuilder({ session }: { session: Session }) {
                         Slide status
                         <select
                           className="rounded-lg border border-white/10 bg-[#0c0f11] px-3 py-2 text-slate-100"
-                          value={item.slidesStatus ?? "no-slides"}
+                          value={slideStatusValue}
                           onChange={(event) =>
                             updateSessionSong(item.id, {
                               slidesStatus: event.target.value as SessionSong["slidesStatus"]
@@ -188,7 +191,6 @@ export function SessionBuilder({ session }: { session: Session }) {
                         >
                           <option value="no-slides">No slides</option>
                           <option value="slides-ready">Slides ready</option>
-                          <option value="needs-review">Needs review</option>
                         </select>
                       </label>
                       <div className="rounded-lg border border-white/10 bg-[#101316] px-3 py-2 text-sm text-slate-300">

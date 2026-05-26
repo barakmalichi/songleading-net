@@ -1,9 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#060909"/>
-  <path d="M151 94h210l57 57v267H151z" fill="#101820" stroke="#5b92ff" stroke-width="18" stroke-linejoin="round"/>
-  <path d="M361 94v65h57" fill="none" stroke="#5b92ff" stroke-width="18" stroke-linejoin="round"/>
-  <path d="M205 196h94M205 255h132M205 314h78" fill="none" stroke="#eaf2ff" stroke-width="24" stroke-linecap="round"/>
-  <path d="M332 339V222l61-13v100" fill="none" stroke="#f3ae22" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="313" cy="352" r="29" fill="#f3ae22"/>
-  <circle cx="393" cy="322" r="29" fill="#f3ae22"/>
+  <defs>
+    <clipPath id="lineup-icon-shape">
+      <rect width="512" height="512" rx="132"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#lineup-icon-shape)">
+    <rect width="512" height="512" fill="#060909"/>
+    <path d="M137 78h221l63 63v284H137z" fill="#101820" stroke="#5b92ff" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M358 78v71h63" fill="none" stroke="#5b92ff" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M197 190h101M197 253h142M197 316h83" fill="none" stroke="#eaf2ff" stroke-width="26" stroke-linecap="round"/>
+    <path d="M334 344V219l65-14v108" fill="none" stroke="#f3ae22" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="313" cy="358" r="31" fill="#f3ae22"/>
+    <circle cx="399" cy="326" r="31" fill="#f3ae22"/>
+  </g>
 </svg>

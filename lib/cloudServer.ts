@@ -11,6 +11,15 @@ type ContactMessagePayload = {
   message: string;
 };
 
+type StoredContactMessage = {
+  id: string;
+  created_at: string;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+};
+
 export type WorkspacePayload = {
   lineupState?: unknown;
   studioData?: unknown;
@@ -100,6 +109,20 @@ export async function updateUserProfile(token: string, profile: Record<string, u
   return data;
 }
 
+export async function updateUserPassword(token: string, password: string) {
+  if (!cloudIsConfigured()) throw new Error("Cloud sync is not configured yet.");
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    method: "PUT",
+    headers: jsonHeaders(token),
+    body: JSON.stringify({ password })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error_description || data.msg || data.error || "Could not change password.");
+  return data;
+}
+
 export async function readWorkspace(token: string, userId: string) {
   const response = await fetch(
     `${supabaseUrl}/rest/v1/user_workspaces?user_id=eq.${encodeURIComponent(userId)}&select=lineup_state,studio_data,updated_at`,
@@ -152,6 +175,43 @@ export async function upsertWorkspace(token: string, userId: string, payload: Wo
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function contactRecordFromPayload(payload: ContactMessagePayload): StoredContactMessage {
+  const createdAt = new Date().toISOString();
+  return {
+    id: `contact_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+    created_at: createdAt,
+    name: payload.name || "",
+    email: payload.email || "",
+    topic: payload.topic,
+    message: payload.message
+  };
+}
+
+function normalizeStoredContact(value: unknown): StoredContactMessage | null {
+  if (!isRecord(value)) return null;
+  const topic = textValue(value.topic);
+  const message = textValue(value.message);
+  if (!topic || !message) return null;
+  return {
+    id: textValue(value.id) || `contact_${textValue(value.created_at) || Date.now()}`,
+    created_at: textValue(value.created_at) || new Date().toISOString(),
+    name: textValue(value.name),
+    email: textValue(value.email),
+    topic,
+    message
+  };
+}
+
+function normalizeStoredContacts(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(normalizeStoredContact).filter((item): item is StoredContactMessage => Boolean(item))
+    : [];
 }
 
 async function getAdminUserId() {
@@ -263,30 +323,102 @@ export async function saveHomepageContent(_token: string, user: SupabaseUser, co
   });
 }
 
-export async function insertContactMessage(payload: ContactMessagePayload) {
-  if (!cloudIsConfigured()) throw new Error("Cloud sync is not configured yet.");
-  const response = await fetch(`${supabaseUrl}/rest/v1/contact_messages`, {
-    method: "POST",
-    headers: {
-      ...serviceHeaders(),
-      prefer: "return=representation"
-    },
-    body: JSON.stringify({
-      name: payload.name || "",
-      email: payload.email || "",
-      topic: payload.topic,
-      message: payload.message,
-      created_at: new Date().toISOString()
-    })
-  });
+export async function readCommunityContent() {
+  if (!cloudIsConfigured()) return null;
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    throw new Error(details || "Could not save the message.");
+  const adminUserId = await getAdminUserId();
+  const workspace = await serviceReadWorkspace(adminUserId);
+  const studioData = workspace?.studio_data;
+  if (!isRecord(studioData)) return null;
+  return isRecord(studioData.communityContent) ? studioData.communityContent : null;
+}
+
+export async function saveCommunityContent(_token: string, user: SupabaseUser, content: unknown) {
+  if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
+    throw new Error("This admin area is private.");
   }
 
-  const rows = (await response.json().catch(() => [])) as unknown[];
-  return rows[0] || null;
+  const current = await serviceReadWorkspace(user.id);
+  const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
+  return serviceUpsertWorkspace(user.id, {
+    studioData: {
+      ...currentStudioData,
+      communityContent: content
+    }
+  });
+}
+
+export async function insertContactMessage(payload: ContactMessagePayload) {
+  if (!cloudIsConfigured()) throw new Error("Cloud sync is not configured yet.");
+  const contactRecord = contactRecordFromPayload(payload);
+  let tableError = "";
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/contact_messages`, {
+      method: "POST",
+      headers: {
+        ...serviceHeaders(),
+        prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        name: contactRecord.name,
+        email: contactRecord.email,
+        topic: contactRecord.topic,
+        message: contactRecord.message,
+        created_at: contactRecord.created_at
+      })
+    });
+
+    if (response.ok) {
+      const rows = (await response.json().catch(() => [])) as unknown[];
+      return rows[0] || contactRecord;
+    }
+
+    tableError = await response.text().catch(() => "");
+  } catch (error) {
+    tableError = error instanceof Error ? error.message : "";
+  }
+
+  try {
+    return await saveContactMessageToAdminWorkspace(contactRecord);
+  } catch (error) {
+    throw new Error(tableError || (error instanceof Error ? error.message : "Could not save the message."));
+  }
+}
+
+async function saveContactMessageToAdminWorkspace(contactRecord: StoredContactMessage) {
+  const adminUserId = await getAdminUserId();
+  const current = await serviceReadWorkspace(adminUserId);
+  const currentStudioData = isRecord(current?.studio_data) ? current.studio_data : {};
+  const currentMessages = normalizeStoredContacts(currentStudioData.contactMessages);
+  await serviceUpsertWorkspace(adminUserId, {
+    studioData: {
+      ...currentStudioData,
+      contactMessages: [contactRecord, ...currentMessages].slice(0, 200)
+    }
+  });
+  return contactRecord;
+}
+
+async function readContactMessagesFromAdminWorkspace(adminUserId: string) {
+  const workspace = await serviceReadWorkspace(adminUserId);
+  const studioData = workspace?.studio_data;
+  if (!isRecord(studioData)) return [];
+  return normalizeStoredContacts(studioData.contactMessages);
+}
+
+function mergeContactMessages(primary: unknown[], fallback: StoredContactMessage[]) {
+  const seen = new Set<string>();
+  return [...primary, ...fallback]
+    .map(normalizeStoredContact)
+    .filter((contact): contact is StoredContactMessage => {
+      if (!contact) return false;
+      const key = contact.id || `${contact.created_at}:${contact.email}:${contact.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((first, second) => Date.parse(second.created_at || "") - Date.parse(first.created_at || ""));
 }
 
 async function serviceGet(path: string) {
@@ -311,9 +443,11 @@ export async function getAdminDashboard() {
   ]);
 
   const users = Array.isArray(usersPayload?.users) ? usersPayload.users : [];
+  const admin = users.find((user: SupabaseUser) => user.email?.toLowerCase() === ADMIN_EMAIL);
+  const workspaceContacts = admin?.id ? await readContactMessagesFromAdminWorkspace(admin.id).catch(() => []) : [];
   return {
     users,
-    contacts: Array.isArray(contacts) ? contacts : [],
+    contacts: mergeContactMessages(Array.isArray(contacts) ? contacts : [], workspaceContacts).slice(0, 100),
     workspaceCount: Array.isArray(workspaces) ? workspaces.length : 0
   };
 }

@@ -66,6 +66,12 @@ export const homepageContentStorageKey = "songleading-homepage-content";
 
 const previousAboutImagePath = "/media/generated/barak-about-portrait.png";
 const previousInlineAboutImagePrefix = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdp";
+const previousHeroText = "Plan, teach, gather ideas, and go on stage more prepared.";
+const previousHeroPrimaryLabel = "Start Planning";
+const previousHeroSecondaryLabel = "Browse ideas";
+const previousToolsTitle = "Plan the moment before you lead it.";
+const previousToolsText = "The Lineup app lives here as a working tool: song bank, show order, notes, capo, keys, exports, and connected lyric slides.";
+const previousToolsButtonLabel = "Start Planning";
 
 export const defaultHomepageAboutContent: HomepageAboutContent = {
   name: "Barak Malichi",
@@ -81,9 +87,9 @@ export const defaultHomepageContent: HomepageContent = {
     headlinePrefix: "The home of modern",
     shineWord: "SONGLEADING",
     subheadline: "Plan smarter. Lead better. Make them sing.",
-    text: "Plan, teach, gather ideas, and go on stage more prepared.",
-    primaryLabel: "Start Planning",
-    secondaryLabel: "Browse ideas"
+    text: "Build setlists in Lineup, browse songleading ideas, and go on stage more prepared.",
+    primaryLabel: "Open Lineup",
+    secondaryLabel: "Browse Toolkit"
   },
   resources: {
     image: "/media/generated/songleader-practice-resources.png",
@@ -130,9 +136,9 @@ export const defaultHomepageContent: HomepageContent = {
   },
   tools: {
     eyebrow: "Tools",
-    title: "Plan the moment before you lead it.",
-    text: "The Lineup app lives here as a working tool: song bank, show order, notes, capo, keys, exports, and connected lyric slides.",
-    buttonLabel: "Start Planning",
+    title: "Use Lineup before you lead.",
+    text: "Build the setlist, pull from your song bank, add notes, prep keys and capo, export, and make connected lyric slides.",
+    buttonLabel: "Open Lineup",
     previewEyebrow: "Lineup",
     previewTitle: "Friday Night Set"
   },
@@ -154,6 +160,11 @@ const previousFooterNote = "Tools and resources for the next gathering.";
 
 function cleanString(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function cleanStringWithPrevious(value: unknown, fallback: string, previousValues: string[] = []) {
+  const cleaned = cleanString(value, fallback);
+  return previousValues.includes(cleaned) ? fallback : cleaned;
 }
 
 function cleanAboutImage(value: unknown) {
@@ -220,9 +231,9 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
       headlinePrefix: cleanString(hero.headlinePrefix, defaultHomepageContent.hero.headlinePrefix),
       shineWord: cleanString(hero.shineWord, defaultHomepageContent.hero.shineWord),
       subheadline: cleanString(hero.subheadline, defaultHomepageContent.hero.subheadline),
-      text: cleanString(hero.text, defaultHomepageContent.hero.text),
-      primaryLabel: cleanString(hero.primaryLabel, defaultHomepageContent.hero.primaryLabel),
-      secondaryLabel: cleanString(hero.secondaryLabel, defaultHomepageContent.hero.secondaryLabel)
+      text: cleanStringWithPrevious(hero.text, defaultHomepageContent.hero.text, [previousHeroText]),
+      primaryLabel: cleanStringWithPrevious(hero.primaryLabel, defaultHomepageContent.hero.primaryLabel, [previousHeroPrimaryLabel]),
+      secondaryLabel: cleanStringWithPrevious(hero.secondaryLabel, defaultHomepageContent.hero.secondaryLabel, [previousHeroSecondaryLabel])
     },
     resources: {
       image: cleanString(resources.image, defaultHomepageContent.resources.image),
@@ -244,9 +255,9 @@ export function normalizeHomepageContent(value: Partial<HomepageContent> = {}): 
     },
     tools: {
       eyebrow: cleanString(tools.eyebrow, defaultHomepageContent.tools.eyebrow),
-      title: cleanString(tools.title, defaultHomepageContent.tools.title),
-      text: cleanString(tools.text, defaultHomepageContent.tools.text),
-      buttonLabel: cleanString(tools.buttonLabel, defaultHomepageContent.tools.buttonLabel),
+      title: cleanStringWithPrevious(tools.title, defaultHomepageContent.tools.title, [previousToolsTitle]),
+      text: cleanStringWithPrevious(tools.text, defaultHomepageContent.tools.text, [previousToolsText]),
+      buttonLabel: cleanStringWithPrevious(tools.buttonLabel, defaultHomepageContent.tools.buttonLabel, [previousToolsButtonLabel]),
       previewEyebrow: cleanString(tools.previewEyebrow, defaultHomepageContent.tools.previewEyebrow),
       previewTitle: cleanString(tools.previewTitle, defaultHomepageContent.tools.previewTitle)
     },

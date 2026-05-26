@@ -186,7 +186,7 @@ export function LineupSongSlides({ lineupId, lineupSongId }: { lineupId: string;
   function createForThisSong() {
     if (!sourceSong) return;
     upsertSong(sourceSong);
-    connect(sourceSong, sourceSong.sections.length > 0 ? "needs-review" : "no-slides");
+    connect(sourceSong, sourceSong.sections.length > 0 ? "slides-ready" : "no-slides");
   }
 
   function markSaved(savedSong: Song, flowId: string) {

@@ -1,20 +1,19 @@
 import {
   ArrowRight,
   BookOpenText,
+  BriefcaseBusiness,
   CalendarDays,
   ChevronRight,
-  Music2,
+  LibraryBig,
   Rows3,
-  Users,
-  Wrench
+  UsersRound
 } from "lucide-react";
 import Image from "next/image";
 import type { CSSProperties } from "react";
-import { AuthButton } from "@/components/AuthButton";
 import { HomeContentBridge } from "@/components/HomeContentBridge";
 import { HomeAboutSection } from "@/components/HomeAboutSection";
 import { HomeScrollEffects } from "@/components/HomeScrollEffects";
-import { HomeThemeToggle } from "@/components/HomeThemeToggle";
+import { SiteHeader } from "@/components/SiteHeader";
 import { defaultHomepageContent } from "@/lib/homepageContent";
 
 export const dynamic = "force-static";
@@ -44,53 +43,6 @@ function LineText({ text, field }: { text: string; field: string }) {
         <span key={line} className="block">{line}</span>
       ))}
     </span>
-  );
-}
-
-function SiteHeader() {
-  return (
-    <header className="site-header z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-5" style={{ background: "rgba(15, 23, 42, 0.9)" }}>
-      <a href="/" className="site-brand flex min-w-0 items-center gap-2.5 font-black tracking-tight" aria-label="Songleading.net home">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
-          <Music2 size={19} />
-        </span>
-        <span className="brand-text min-w-0 leading-tight">
-          <span className="block truncate text-base">Songleading.net</span>
-          <span className="block whitespace-nowrap text-[10px] font-black uppercase tracking-[0.14em] text-white/[0.62]">by Barak Malichi</span>
-        </span>
-      </a>
-      <nav className="site-icon-nav hidden items-center gap-1.5 md:flex" aria-label="Homepage sections">
-        <a className="top-nav-link" href="#resources" aria-label="Resources" title="Resources">
-          <BookOpenText size={17} />
-          <span>Resources</span>
-        </a>
-        <a className="top-nav-link" href="#training" aria-label="Training" title="Training">
-          <BookOpenText size={17} />
-          <span>Training</span>
-        </a>
-        <a className="top-nav-link" href="#tools" aria-label="Tools" title="Tools">
-          <Wrench size={17} />
-          <span>Tools</span>
-        </a>
-        <a className="top-nav-link" href="#about" aria-label="About Barak" title="About Barak">
-          <Users size={17} />
-          <span>About</span>
-        </a>
-      </nav>
-      <div className="site-actions flex shrink-0 items-center gap-1.5">
-        <HomeThemeToggle />
-        <a
-          href="/lineup/index.html"
-          className="top-symbol-button lineup-app-nav-link"
-          aria-label="Lineup App"
-          title="Lineup App"
-        >
-          <img src="/lineup/icon.svg" alt="" className="lineup-app-mark" />
-          <span>Lineup App</span>
-        </a>
-        <AuthButton />
-      </div>
-    </header>
   );
 }
 
@@ -134,7 +86,7 @@ export default function HomePage() {
                 <ArrowRight size={18} />
               </a>
               <a
-                href="#resources"
+                href="/toolkit"
                 className="hero-secondary-action inline-flex items-center gap-2 rounded-xl border border-white/28 bg-slate-950/38 px-5 py-3 text-sm font-black text-white shadow-xl shadow-slate-950/15 backdrop-blur transition hover:-translate-y-0.5 hover:bg-slate-950/52"
               >
                 <span data-home-text="hero.secondaryLabel">{content.hero.secondaryLabel}</span>
@@ -190,6 +142,16 @@ export default function HomePage() {
                   </div>
                 </article>
               ))}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a href="/toolkit" className="motion-copy inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-blue-700">
+                Explore the Songleader Toolkit
+                <LibraryBig size={18} />
+              </a>
+              <a href="/placements" className="motion-copy inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white/80 px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:border-blue-400">
+                Songleader placements
+                <BriefcaseBusiness size={18} />
+              </a>
             </div>
           </div>
         </div>
@@ -334,6 +296,10 @@ export default function HomePage() {
               <p className="motion-copy mt-4 text-lg font-semibold leading-8 text-white/75" data-home-text="community.secondText">
                 {content.community.secondText}
               </p>
+              <a href="/community" className="motion-copy mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-blue-50">
+                Visit Community
+                <UsersRound size={18} />
+              </a>
             </div>
           </div>
         </div>

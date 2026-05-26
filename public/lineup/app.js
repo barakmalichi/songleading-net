@@ -14,9 +14,11 @@ const guestSessionStorageKey = "songleading-guest-session:v1";
 const studioStorageKey = "lyric-slide-studio:v1";
 const themeStorageKey = "show-lineup-builder-theme";
 const skinStorageKey = "show-lineup-builder-skin";
+const accentStorageKey = "show-lineup-builder-accent";
 const bankWidthStorageKey = "show-lineup-builder-bank-width";
 const slidesThemePresetsStorageKey = "lineup-slides-theme-presets:v1";
 const onboardingHiddenStorageKey = "lineup-onboarding-tips-hidden:v1";
+const songleadingHomeUrl = "https://www.songleading.net/";
 const requireAccountForApp = true;
 const appVersion = 9;
 const defaultShowName = "New Setlist";
@@ -32,18 +34,30 @@ const importLimits = {
   slides: 180,
   slideLines: 1200,
   slideLineBreaks: 300,
+  sheetAttachments: 36,
+  sheetPages: 200,
+  sheetStrokes: 900,
+  sheetPoints: 1800,
 };
 const safeIdPattern = /^[A-Za-z0-9:_-]{1,96}$/;
 const slideStatusValues = new Set(["no-slides", "needs-review", "slides-ready"]);
 const defaultSlideDesign = { theme: "default", fontSize: 56 };
+const minimumSlideEditorFontSize = 14;
+const maxSlideEditorFontSize = 320;
+const slideEditorFitSafetyPadding = 4;
 const defaultSlideExportTheme = { name: "default", image: "", presetName: "", crop: { x: 50, y: 50, zoom: 100 } };
 const slideTextWeight = 700;
 const pptxMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const sheetDbName = "lineup-sheet-files:v1";
+const sheetDbStore = "files";
+const sheetFileMaxBytes = 25 * 1024 * 1024;
+const sheetMimePattern = /^(application\/pdf|image\/(?:png|jpe?g|webp|gif|bmp|heic|heif|tiff?))$/i;
 const slideThemeOptions = [
   { id: "default", label: "Dark" },
   { id: "warm", label: "Warm" },
   { id: "bright", label: "Bright" },
 ];
+const accentChoices = ["blue", "green", "yellow", "teal", "rose", "purple"];
 
 function sanitizeSlideExportCrop(crop = {}) {
   const x = Number.isFinite(Number(crop.x)) ? clampNumber(Number(crop.x), 0, 100) : 50;
@@ -95,7 +109,7 @@ function setCapoSelectLabels(select, compactSelected = false) {
 
 function refreshCapoSelectLabels() {
   document.querySelectorAll(".capo-select").forEach((select) => {
-    setCapoSelectLabels(select, isMobileLayout() && document.activeElement !== select);
+    setCapoSelectLabels(select, document.activeElement !== select);
   });
 }
 
@@ -113,6 +127,7 @@ let draggedBankSongId = null;
 let quickAddRows = [];
 let sidePanelMode = "library";
 let accountMode = "sign-in";
+let accountScreen = "choices";
 let slidePreviewOpen = false;
 let activeSlidePreviewIndex = 0;
 let coachStepIndex = 0;
@@ -122,16 +137,42 @@ let mobileLibraryExpanded = false;
 let mobileLibraryState = "middle";
 let selectedSetlistIds = new Set();
 let activeSetlistFolderId = "";
+let setlistFolderDialogMoveSelection = false;
+let setlistLongPressTimer = null;
+let setlistLongPressTargetId = "";
+let suppressNextSetlistClickId = "";
 let activeSlidesContext = null;
 let activeSlidesDraft = [];
 let activeSlidesIndex = 0;
 let activeSlidesDesign = { ...defaultSlideDesign };
+let activeSlidesSetupMode = false;
 let slidesExportPendingImage = "";
 let slidesExportPreviewIndex = 0;
+let presentationSlides = [];
+let presentationIndex = 0;
+let presentationTheme = { ...defaultSlideExportTheme };
+let presentationOptions = {};
+let activeSheetsLineupId = "";
+let activeSheetsSongId = "";
+let activeSheetsMode = "lineup";
+let activeSheetId = "";
+let activeSheetPageIndex = 0;
+let sheetFileMode = "add";
+let sheetReplaceId = "";
+let sheetTool = "pen";
+let sheetDrawing = null;
+let sheetPreviewUrl = "";
+let sheetPreviewRenderQueued = false;
+let sheetDbPromise = null;
 let lineupUndoStack = [];
 let lineupRedoStack = [];
 let activeSlidesUndoStack = [];
 let activeSlidesRedoStack = [];
+let pendingLineupDeleteId = "";
+let pendingLineupDeleteArmedAt = 0;
+let pendingLineupDeleteTimer = null;
+let pendingLineupRemoveUndo = null;
+let pendingLineupRemoveUndoTimer = null;
 let restoringLineupHistory = false;
 let restoringSlidesHistory = false;
 let songDialogMode = "library";
@@ -149,6 +190,7 @@ const els = {
   appShell: document.querySelector(".app-shell"),
   showPanel: document.querySelector(".show-panel"),
   bankPanel: document.querySelector(".bank-panel"),
+  bankHeader: document.querySelector(".bank-header"),
   panelResizer: document.querySelector("#panelResizer"),
   showName: document.querySelector("#showName"),
   showDate: document.querySelector("#showDate"),
@@ -180,6 +222,7 @@ const els = {
   exportSlidesButton: document.querySelector("#exportSlidesButton"),
   exportSlidesFromMenuButton: document.querySelector("#exportSlidesFromMenuButton"),
   slidePreviewToggle: document.querySelector("#slidePreviewToggle"),
+  presentationMenuButton: document.querySelector("#presentationMenuButton"),
   slidePreviewPanel: document.querySelector("#slidePreviewPanel"),
   closeSlidePreviewButton: document.querySelector("#closeSlidePreviewButton"),
   slidePreviewStage: document.querySelector("#slidePreviewStage"),
@@ -191,6 +234,7 @@ const els = {
   accountMenuButton: document.querySelector("#accountMenuButton"),
   setlistStartDialog: document.querySelector("#setlistStartDialog"),
   homeButton: document.querySelector("#homeButton"),
+  homeMenuButton: document.querySelector("#homeMenuButton"),
   startNewSetlistButton: document.querySelector("#startNewSetlistButton"),
   openExistingSetlistButton: document.querySelector("#openExistingSetlistButton"),
   coachOverlay: document.querySelector("#coachOverlay"),
@@ -212,6 +256,7 @@ const els = {
   oneTimeSongButton: document.querySelector("#oneTimeSongButton"),
   addSlideOnlyButton: document.querySelector("#addSlideOnlyButton"),
   slideOnlyImageInput: document.querySelector("#slideOnlyImageInput"),
+  sheetFileInput: document.querySelector("#sheetFileInput"),
   songDialog: document.querySelector("#songDialog"),
   songForm: document.querySelector("#songForm"),
   saveSongButton: document.querySelector("#saveSongButton"),
@@ -250,11 +295,42 @@ const els = {
   showNotesDialog: document.querySelector("#showNotesDialog"),
   showNotesForm: document.querySelector("#showNotesForm"),
   showNotesText: document.querySelector("#showNotesText"),
+  setlistsBackTopButton: document.querySelector("#setlistsBackTopButton"),
+  setlistSelectionBar: document.querySelector("#setlistSelectionBar"),
+  setlistSelectionCount: document.querySelector("#setlistSelectionCount"),
+  setlistFolderDialog: document.querySelector("#setlistFolderDialog"),
+  setlistFolderForm: document.querySelector("#setlistFolderForm"),
+  setlistFolderDialogTitle: document.querySelector("#setlistFolderDialogTitle"),
+  setlistFolderName: document.querySelector("#setlistFolderName"),
+  saveSetlistFolderButton: document.querySelector("#saveSetlistFolderButton"),
   teamDialog: document.querySelector("#teamDialog"),
   teamForm: document.querySelector("#teamForm"),
   teamText: document.querySelector("#teamText"),
+  sheetsDialog: document.querySelector("#sheetsDialog"),
+  sheetsDialogTitle: document.querySelector("#sheetsDialogTitle"),
+  addSheetButton: document.querySelector("#addSheetButton"),
+  replaceSheetButton: document.querySelector("#replaceSheetButton"),
+  renameSheetButton: document.querySelector("#renameSheetButton"),
+  moveSheetUpButton: document.querySelector("#moveSheetUpButton"),
+  moveSheetDownButton: document.querySelector("#moveSheetDownButton"),
+  removeSheetButton: document.querySelector("#removeSheetButton"),
+  sheetsList: document.querySelector("#sheetsList"),
+  sheetsPreviewMeta: document.querySelector("#sheetsPreviewMeta"),
+  prevSheetPageButton: document.querySelector("#prevSheetPageButton"),
+  sheetPageLabel: document.querySelector("#sheetPageLabel"),
+  nextSheetPageButton: document.querySelector("#nextSheetPageButton"),
+  sheetPenButton: document.querySelector("#sheetPenButton"),
+  sheetEraserButton: document.querySelector("#sheetEraserButton"),
+  undoSheetMarkupButton: document.querySelector("#undoSheetMarkupButton"),
+  clearSheetMarkupButton: document.querySelector("#clearSheetMarkupButton"),
+  sheetsPreviewStage: document.querySelector("#sheetsPreviewStage"),
+  sheetsPreviewEmpty: document.querySelector("#sheetsPreviewEmpty"),
+  sheetsPreviewImage: document.querySelector("#sheetsPreviewImage"),
+  sheetsPreviewPdf: document.querySelector("#sheetsPreviewPdf"),
+  sheetsMarkupCanvas: document.querySelector("#sheetsMarkupCanvas"),
   settingsDialog: document.querySelector("#settingsDialog"),
   skinChoiceGrid: document.querySelector("#skinChoiceGrid"),
+  accentChoiceGrid: document.querySelector("#accentChoiceGrid"),
   settingsThemeButton: document.querySelector("#settingsThemeButton"),
   settingsThemeText: document.querySelector("#settingsThemeText"),
   settingsBackupButton: document.querySelector("#settingsBackupButton"),
@@ -265,11 +341,19 @@ const els = {
   accountDialogCopy: document.querySelector("#accountDialogCopy"),
   accountSignedOut: document.querySelector("#accountSignedOut"),
   accountSignedIn: document.querySelector("#accountSignedIn"),
+  accountChoiceView: document.querySelector("#accountChoiceView"),
+  accountCredentialView: document.querySelector("#accountCredentialView"),
   accountEmail: document.querySelector("#accountEmail"),
   accountPassword: document.querySelector("#accountPassword"),
   accountPasswordToggle: document.querySelector("#accountPasswordToggle"),
+  accountNewPassword: document.querySelector("#accountNewPassword"),
+  accountNewPasswordToggle: document.querySelector("#accountNewPasswordToggle"),
+  accountConfirmPassword: document.querySelector("#accountConfirmPassword"),
+  accountConfirmPasswordToggle: document.querySelector("#accountConfirmPasswordToggle"),
+  accountChangePasswordButton: document.querySelector("#accountChangePasswordButton"),
   accountSignInModeButton: document.querySelector("#accountSignInModeButton"),
   accountSignUpModeButton: document.querySelector("#accountSignUpModeButton"),
+  accountBackButton: document.querySelector("#accountBackButton"),
   accountSignupFields: document.querySelector("#accountSignupFields"),
   accountFullName: document.querySelector("#accountFullName"),
   accountPhone: document.querySelector("#accountPhone"),
@@ -320,8 +404,14 @@ const els = {
   exportDocButton: document.querySelector("#exportDocButton"),
   exportLineupFileButton: document.querySelector("#exportLineupFileButton"),
   exportDownloadReady: document.querySelector("#exportDownloadReady"),
+  exportTabButtons: document.querySelectorAll("[data-export-tab]"),
+  exportSlidesPanel: document.querySelector("#exportSlidesPanel"),
+  exportSheetsPanel: document.querySelector("#exportSheetsPanel"),
+  sheetPackSelection: document.querySelector("#sheetPackSelection"),
+  exportSheetPackButton: document.querySelector("#exportSheetPackButton"),
   slidesExportDialog: document.querySelector("#slidesExportDialog"),
   slidesExportForm: document.querySelector("#slidesExportForm"),
+  slidesPresentButton: document.querySelector("#slidesPresentButton"),
   slidesExportImage: document.querySelector("#slidesExportImage"),
   slidesExportImageZoom: document.querySelector("#slidesExportImageZoom"),
   slidesExportImageX: document.querySelector("#slidesExportImageX"),
@@ -334,6 +424,14 @@ const els = {
   saveSlidesPresetButton: document.querySelector("#saveSlidesPresetButton"),
   deleteSlidesPresetButton: document.querySelector("#deleteSlidesPresetButton"),
   clearSlidesImageButton: document.querySelector("#clearSlidesImageButton"),
+  presentationDialog: document.querySelector("#presentationDialog"),
+  presentationStage: document.querySelector("#presentationStage"),
+  presentationSlideImage: document.querySelector("#presentationSlideImage"),
+  presentationCount: document.querySelector("#presentationCount"),
+  presentationPrevButton: document.querySelector("#presentationPrevButton"),
+  presentationNextButton: document.querySelector("#presentationNextButton"),
+  presentationFullscreenButton: document.querySelector("#presentationFullscreenButton"),
+  presentationCloseButton: document.querySelector("#presentationCloseButton"),
   slidesEditorDialog: document.querySelector("#slidesEditorDialog"),
   slidesEditorBackButton: document.querySelector("#slidesEditorBackButton"),
   slidesEditorTitle: document.querySelector("#slidesEditorTitle"),
@@ -345,7 +443,9 @@ const els = {
   slidesFullLyrics: document.querySelector("#slidesFullLyrics"),
   slidesUseSongNotesButton: document.querySelector("#slidesUseSongNotesButton"),
   slidesCreateButton: document.querySelector("#slidesCreateButton"),
+  slidesEditFullLyricsButton: document.querySelector("#slidesEditFullLyricsButton"),
   slidesEditorPreviewButton: document.querySelector("#slidesEditorPreviewButton"),
+  slidesEditorPresentButton: document.querySelector("#slidesEditorPresentButton"),
   slidesEditorReadyButton: document.querySelector("#slidesEditorReadyButton"),
   slidesEditorList: document.querySelector("#slidesEditorList"),
   slidesLivePreview: document.querySelector("#slidesLivePreview"),
@@ -455,6 +555,82 @@ function safeImageValue(value) {
   return "";
 }
 
+function safeSheetMimeType(value) {
+  const mime = safeText(value, 80).toLowerCase();
+  return sheetMimePattern.test(mime) ? mime : "";
+}
+
+function normalizeSheetPoint(point) {
+  if (!Array.isArray(point) || point.length < 2) return null;
+  const x = clampNumber(Number(point[0]), 0, 1);
+  const y = clampNumber(Number(point[1]), 0, 1);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return [x, y];
+}
+
+function normalizeSheetStroke(stroke = {}) {
+  if (!stroke || typeof stroke !== "object") return null;
+  const tool = stroke.tool === "eraser" ? "eraser" : "pen";
+  const points = safeArray(stroke.points, importLimits.sheetPoints).map(normalizeSheetPoint).filter(Boolean);
+  if (points.length < 2) return null;
+  return {
+    tool,
+    color: safeText(stroke.color, 16) || "#d82424",
+    width: clampNumber(Number(stroke.width) || 3, 1, 18),
+    points,
+  };
+}
+
+function normalizeSheetAnnotations(raw = {}) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const annotations = {};
+  Object.entries(raw).forEach(([page, strokes]) => {
+    const pageIndex = Math.max(0, Math.floor(Number(page)));
+    if (!Number.isFinite(pageIndex) || pageIndex >= importLimits.sheetPages) return;
+    const normalized = safeArray(strokes, importLimits.sheetStrokes).map(normalizeSheetStroke).filter(Boolean);
+    if (normalized.length) annotations[String(pageIndex)] = normalized;
+  });
+  return annotations;
+}
+
+function normalizeSheetAttachment(attachment = {}) {
+  if (!attachment || typeof attachment !== "object") return null;
+  const mimeType = safeSheetMimeType(attachment.mimeType);
+  if (!mimeType) return null;
+  const pageCount = mimeType === "application/pdf"
+    ? clampNumber(Math.floor(Number(attachment.pageCount) || 1), 1, importLimits.sheetPages)
+    : 1;
+  const id = safeId(attachment.id || attachment.localKey, "sheet");
+  const name = safeText(attachment.name || attachment.fileName, 120, "Sheet") || "Sheet";
+  return {
+    id,
+    localKey: safeId(attachment.localKey || id, "sheet-file"),
+    name,
+    fileName: safeText(attachment.fileName || name, 160, name) || name,
+    mimeType,
+    size: Math.max(0, Math.floor(Number(attachment.size) || 0)),
+    pageCount,
+    createdAt: safeText(attachment.createdAt, 40) || new Date().toISOString(),
+    updatedAt: safeText(attachment.updatedAt, 40) || new Date().toISOString(),
+    annotations: normalizeSheetAnnotations(attachment.annotations),
+  };
+}
+
+function normalizeSheetAttachments(attachments) {
+  return safeArray(attachments, importLimits.sheetAttachments)
+    .map(normalizeSheetAttachment)
+    .filter(Boolean);
+}
+
+function mergeSheetAttachments(...groups) {
+  const seen = new Set();
+  return groups.flatMap(normalizeSheetAttachments).filter((attachment) => {
+    if (seen.has(attachment.id)) return false;
+    seen.add(attachment.id);
+    return true;
+  }).slice(0, importLimits.sheetAttachments);
+}
+
 function normalizeSong(song = {}, fallbackPrefix = "song") {
   if (!song || typeof song !== "object") return null;
   const title = safeText(song.title, 70);
@@ -476,6 +652,7 @@ function normalizeSong(song = {}, fallbackPrefix = "song") {
     slideSongId: safeOptionalId(song.slideSongId),
     slideFlowId: safeOptionalId(song.slideFlowId),
     slidesStatus: safeSlideStatus(song.slidesStatus),
+    sheetAttachments: normalizeSheetAttachments(song.sheetAttachments || song.chordAttachments),
   };
 }
 
@@ -536,7 +713,7 @@ function normalizeLocalSlideSong(slideSong = {}) {
     updatedAt: safeText(slideSong.updatedAt, 40),
     design: {
       theme: slideThemeOptions.some((option) => option.id === slideSong.design?.theme) ? slideSong.design.theme : defaultSlideDesign.theme,
-      fontSize: clampNumber(Number(slideSong.design?.fontSize) || defaultSlideDesign.fontSize, 18, 78),
+      fontSize: clampNumber(Number(slideSong.design?.fontSize) || defaultSlideDesign.fontSize, minimumSlideEditorFontSize, maxSlideEditorFontSize),
     },
     sections: safeSections,
     savedFlows: savedFlows.length ? savedFlows : [normalizeSlideFlow({ selectedSectionInstances: [{ sectionId: safeSections[0].id }] }, safeSections)],
@@ -564,11 +741,11 @@ function normalizeShowRecord(show = {}, fallbackLineup = [], songIdMap = new Map
 
 function normalizeImportedPayload(payload, expectedType = "any") {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("Imported data was not a lineup file.");
+    throw new Error("Imported data was not a setlist file.");
   }
   const fileType = safeText(payload.fileType, 80);
   if (expectedType === "lineup" && fileType && fileType !== "show-lineup-builder") {
-    throw new Error("This is not a lineup file.");
+    throw new Error("This is not a setlist file.");
   }
   if (expectedType === "backup" && fileType && fileType !== "show-lineup-builder-backup") {
     throw new Error("This is not a full backup file.");
@@ -600,7 +777,7 @@ function readImportedJsonFile(file, maxBytes, callback) {
     try {
       callback(JSON.parse(text));
     } catch {
-      toast("That file is not valid lineup JSON.");
+      toast("That file is not valid setlist JSON.");
     }
   });
   reader.addEventListener("error", () => toast("That file could not be read."));
@@ -762,6 +939,7 @@ function normalizeLineupItem(item, songIdMap = new Map()) {
     slideSongId: safeOptionalId(item.slideSongId),
     slideFlowId: safeOptionalId(item.slideFlowId),
     slideSaveScope: safeSlideSaveScope(item.slideSaveScope),
+    sheetAttachments: normalizeSheetAttachments(item.sheetAttachments || item.chordAttachments),
   };
 
   if (!next.songId && item.oneTimeSong && typeof item.oneTimeSong === "object") {
@@ -813,13 +991,13 @@ function getSharedStateFromHash() {
   if (!match) return null;
 
   try {
-    if (match[1].length > importLimits.shareChars) throw new Error("Shared lineup link was too large.");
+    if (match[1].length > importLimits.shareChars) throw new Error("Shared setlist link was too large.");
     const parsed = JSON.parse(decodeShareData(match[1]));
     const shared = normalizeImportedPayload(parsed, "lineup");
     importedSharedLineup = true;
     return shared;
   } catch (error) {
-    console.warn("Shared lineup link could not be opened.", error);
+    console.warn("Shared setlist link could not be opened.", error);
     return null;
   }
 }
@@ -1170,18 +1348,49 @@ function stopCloudSyncLoop() {
   cloudSyncTimer = null;
 }
 
+function isInstalledAppShell() {
+  return Boolean(window.lineupDesktop?.isDesktop || window.lineupNativeFile?.isNative);
+}
+
+function applyInstalledShellMode() {
+  document.body.classList.toggle("installed-app-shell", isInstalledAppShell());
+}
+
+function openSongleadingHome(event) {
+  if (!isInstalledAppShell()) return;
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  if (els.headerMenu) els.headerMenu.open = false;
+  if (window.lineupDesktop?.openExternal) {
+    window.lineupDesktop.openExternal(songleadingHomeUrl);
+    return;
+  }
+  window.location.href = songleadingHomeUrl;
+}
+
 function updateAccountDialog(message = "") {
   const session = getCloudSession();
   const guest = hasGuestSession();
+  const showingCredentials = !session && accountScreen === "credentials";
   if (els.accountSignedOut) els.accountSignedOut.hidden = Boolean(session);
   if (els.accountSignedIn) els.accountSignedIn.hidden = !session;
-  if (els.accountDialogTitle) els.accountDialogTitle.textContent = session ? "Account" : accountMode === "sign-up" ? "Sign Up" : "Sign in";
+  if (els.accountChoiceView) els.accountChoiceView.hidden = Boolean(session) || showingCredentials;
+  if (els.accountCredentialView) els.accountCredentialView.hidden = Boolean(session) || !showingCredentials;
+  if (els.accountDialogTitle) {
+    els.accountDialogTitle.textContent = session
+      ? "Cloud"
+      : showingCredentials
+        ? accountMode === "sign-up" ? "Sign up" : "Sign in"
+        : "Cloud";
+  }
   if (els.accountDialogCopy) {
     els.accountDialogCopy.textContent = session
       ? "Your cloud workspace is active. Changes save automatically."
-      : accountMode === "sign-up"
-        ? "Create an account to use Lineup and keep your work saved across devices."
-        : "Sign in to sync across devices, or continue as guest for this browser only.";
+      : !showingCredentials
+        ? "Sign in, create an account, or continue as guest to use Lineup."
+        : accountMode === "sign-up"
+          ? "Create an account to use Lineup and keep your work saved in the cloud."
+          : "Sign in to use cloud sync, or go back to choose another option.";
   }
   if (els.accountSignupFields) els.accountSignupFields.hidden = accountMode !== "sign-up";
   if (els.accountSignInModeButton) els.accountSignInModeButton.classList.toggle("active", accountMode === "sign-in");
@@ -1201,18 +1410,47 @@ function updateAccountDialog(message = "") {
 
 function setAccountMode(mode) {
   accountMode = mode;
+  accountScreen = "credentials";
+  updateAccountDialog();
+  window.setTimeout(() => els.accountEmail?.focus(), 0);
+}
+
+function showAccountChoices() {
+  accountScreen = "choices";
   updateAccountDialog();
 }
 
-function toggleAccountPasswordVisibility() {
-  if (!els.accountPassword || !els.accountPasswordToggle) return;
-  const showing = els.accountPassword.type === "text";
-  els.accountPassword.type = showing ? "password" : "text";
+function togglePasswordFieldVisibility(input, button) {
+  if (!input || !button) return;
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
   const label = showing ? "Show password" : "Hide password";
-  els.accountPasswordToggle.setAttribute("aria-label", label);
-  els.accountPasswordToggle.setAttribute("aria-pressed", String(!showing));
-  els.accountPasswordToggle.title = label;
-  els.accountPassword.focus();
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(!showing));
+  button.title = label;
+  input.focus();
+}
+
+function resetPasswordField(input, button) {
+  if (input) {
+    input.value = "";
+    input.type = "password";
+  }
+  if (button) {
+    button.setAttribute("aria-label", "Show password");
+    button.setAttribute("aria-pressed", "false");
+    button.title = "Show password";
+  }
+}
+
+function resetAccountPasswordFields() {
+  resetPasswordField(els.accountPassword, els.accountPasswordToggle);
+  resetPasswordField(els.accountNewPassword, els.accountNewPasswordToggle);
+  resetPasswordField(els.accountConfirmPassword, els.accountConfirmPasswordToggle);
+}
+
+function toggleAccountPasswordVisibility() {
+  togglePasswordFieldVisibility(els.accountPassword, els.accountPasswordToggle);
 }
 
 function updateAccountUseCaseFields() {
@@ -1232,20 +1470,15 @@ function updateAccountProfileUseCaseFields() {
 function openAccountDialog() {
   const session = getCloudSession();
   accountMode = "sign-in";
+  accountScreen = session ? "credentials" : "choices";
   if (session?.user?.email && els.accountEmail) els.accountEmail.value = session.user.email;
   populateAccountProfile(session?.user?.user_metadata || {});
-  if (els.accountPassword) els.accountPassword.value = "";
-  if (els.accountPassword) els.accountPassword.type = "password";
-  if (els.accountPasswordToggle) {
-    els.accountPasswordToggle.setAttribute("aria-label", "Show password");
-    els.accountPasswordToggle.setAttribute("aria-pressed", "false");
-    els.accountPasswordToggle.title = "Show password";
-  }
+  resetAccountPasswordFields();
   updateAccountDialog();
   openDialog(els.accountDialog);
 }
 
-function openRequiredAccountDialog(message = "Sign in to sync across devices, or continue as guest to save only in this browser.") {
+function openRequiredAccountDialog(message = "Sign in to use cloud sync, or continue as guest to save only in this browser.") {
   authGateActive = true;
   document.body.classList.add("auth-required");
   closeOnboardingTips(false);
@@ -1315,6 +1548,10 @@ async function ensureSignedInForApp() {
 
 async function signInFromAccountDialog(event) {
   event.preventDefault();
+  if (!getCloudSession() && accountScreen !== "credentials") {
+    showAccountChoices();
+    return;
+  }
   if (accountMode === "sign-up") {
     await createAccountFromDialog();
     return;
@@ -1363,10 +1600,10 @@ async function createAccountFromDialog() {
     cloudWorkspaceLoadedForSession = true;
     await saveCurrentWorkspaceToCloud();
     if (authGateActive) {
-      await finishRequiredAccountFlow("Account created. Your Lineup workspace is ready.");
+      await finishRequiredAccountFlow("Account created. Your cloud workspace is ready.");
       return;
     }
-    updateAccountDialog("Account created. This device was saved to your account.");
+    updateAccountDialog("Account created. This device was saved to the cloud.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not create account.");
   }
@@ -1406,6 +1643,38 @@ async function saveAccountProfileToCloud() {
     updateAccountDialog("Profile saved.");
   } catch (error) {
     updateAccountDialog(error instanceof Error ? error.message : "Could not save profile.");
+  }
+}
+
+async function changeAccountPasswordFromDialog() {
+  const password = els.accountNewPassword?.value || "";
+  const confirmPassword = els.accountConfirmPassword?.value || "";
+  if (password.length < 8) {
+    updateAccountDialog("Password must be at least 8 characters.");
+    els.accountNewPassword?.focus();
+    return;
+  }
+  if (password !== confirmPassword) {
+    updateAccountDialog("Passwords do not match.");
+    els.accountConfirmPassword?.focus();
+    return;
+  }
+  updateAccountDialog("Changing password...");
+  try {
+    const session = await getValidCloudSession();
+    if (!session) throw new Error("Please sign in first.");
+    const data = await cloudRequest("/api/auth/password", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ password }),
+    });
+    const user = data.user || session.user;
+    setCloudSession(data.session?.access_token ? data.session : { ...session, user });
+    resetPasswordField(els.accountNewPassword, els.accountNewPasswordToggle);
+    resetPasswordField(els.accountConfirmPassword, els.accountConfirmPasswordToggle);
+    updateAccountDialog("Password changed.");
+  } catch (error) {
+    updateAccountDialog(error instanceof Error ? error.message : "Could not change password.");
   }
 }
 
@@ -1572,20 +1841,20 @@ function songMetaLabel(song) {
 
 function slidesStatusLabel(status) {
   if (status === "slides-ready") return "slides ready";
-  if (status === "needs-review") return "needs review";
+  if (status === "needs-review") return "slides ready";
   return "no slides";
 }
 
 function slidesStatusClass(status) {
   if (status === "slides-ready") return "ready";
-  if (status === "needs-review") return "review";
+  if (status === "needs-review") return "ready";
   return "empty";
 }
 
 function slidesButtonClass(itemOrSong) {
   const status = itemOrSong?.slidesStatus || "no-slides";
   const hasSlides = Boolean(itemOrSong?.image || itemOrSong?.slideSongId || itemOrSong?.slideFlowId || status === "slides-ready");
-  if (status === "needs-review") return "review";
+  if (status === "needs-review") return hasSlides ? "ready" : "empty";
   return hasSlides ? "ready" : "empty";
 }
 
@@ -1593,7 +1862,7 @@ function slidesButtonTitle(itemOrSong) {
   if (itemOrSong?.image) return "Full-screen picture slide";
   const status = itemOrSong?.slidesStatus || "no-slides";
   if (status === "slides-ready") return "Slides ready";
-  if (status === "needs-review") return "Slides need review";
+  if (status === "needs-review") return "Slides ready";
   return "No slides yet";
 }
 
@@ -1608,7 +1877,6 @@ function lineupStats() {
   const notes = state.lineup.filter((item) => item.type === "note" && item.text?.trim()).length;
   const ready = songs.filter(({ item }) => item.ready).length;
   const slidesReady = songs.filter(({ item, song }) => slidesButtonClass(item) === "ready" || slidesButtonClass(song) === "ready").length;
-  const needsReview = songs.filter(({ item }) => item.slidesStatus === "needs-review").length;
   const noSlides = songs.filter(({ item, song }) => slidesButtonClass(item) === "empty" && slidesButtonClass(song) === "empty").length;
   const hebrew = songs.filter(({ song }) => song.hebrew).length;
   const bangers = songs.filter(({ song }) => song.banger).length;
@@ -1618,7 +1886,7 @@ function lineupStats() {
     ready,
     notReady: Math.max(0, songs.length - ready),
     slidesReady,
-    needsReview,
+    needsReview: 0,
     noSlides,
     hebrew,
     bangers,
@@ -1636,20 +1904,15 @@ function renderLineupHealth() {
     ? stats.noSlides === 1
       ? "1 needs slides"
       : `${stats.noSlides} need slides`
-    : stats.needsReview
-      ? stats.needsReview === 1
-        ? "1 needs review"
-        : `${stats.needsReview} need review`
-      : stats.totalSongs
-        ? "Slides ready"
-        : "Slides empty";
+    : stats.totalSongs
+      ? "Slides ready"
+      : "Slides empty";
   const steps = [];
   if (!stats.totalSongs) {
-    steps.push({ tone: "primary", title: "Start with the library", text: "Add songs from the song bank, then arrange them in the lineup." });
+    steps.push({ tone: "primary", title: "Start with the song bank", text: "Add songs from the song bank, then arrange them in the setlist." });
   } else {
     if (stats.notReady) steps.push({ tone: "warning", title: stats.notReady === 1 ? "1 song is not checked ready" : `${stats.notReady} songs are not checked ready`, text: "Use the ready boxes when each song is confirmed." });
     if (stats.noSlides) steps.push({ tone: "warning", title: stats.noSlides === 1 ? "1 song needs slides" : `${stats.noSlides} songs need slides`, text: "Open the Slides button on each song and paste lyrics or review existing slides." });
-    if (stats.needsReview) steps.push({ tone: "warning", title: stats.needsReview === 1 ? "1 slide set needs review" : `${stats.needsReview} slide sets need review`, text: "Check slide breaks and mark ready when the lyrics feel clean." });
     if (!steps.length) steps.push({ tone: "good", title: "Setlist is ready", text: "Everything has slides and every song is marked ready." });
   }
 
@@ -1666,6 +1929,44 @@ function renderLineupHealth() {
         <span>${stats.hebrew ? `${stats.hebrew} Hebrew song${stats.hebrew === 1 ? "" : "s"}` : "No Hebrew songs"}</span>
         <span class="${stats.noSlides || stats.needsReview ? "warning" : "good"}">${escapeHtml(slideStatus)}</span>
       </div>
+    </div>
+  `;
+}
+
+function lineupStartMarkSvg() {
+  return `
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <path class="mark-page" d="M13 8h22l6 6v26H13z" />
+      <path class="mark-fold" d="M35 8v7h6" />
+      <path class="mark-line" d="M19 18h10M19 25h14M19 32h8" />
+      <path class="mark-note" d="M32 34V22l6-1v10" />
+      <circle class="mark-dot" cx="29" cy="34" r="3" />
+      <circle class="mark-dot" cx="38" cy="31" r="3" />
+    </svg>
+  `;
+}
+
+function renderEmptyLineupState() {
+  const landscapeSideBank = isLandscapeSideBankLayout();
+  if (isLibraryDrawerLayout() || landscapeSideBank) {
+    return `
+      <div class="empty-state lineup-start-empty mobile-start">
+        <div class="lineup-start-mark brand-mark" aria-hidden="true">
+          ${lineupStartMarkSvg()}
+        </div>
+        <strong>Start from the Song Bank</strong>
+        <p>${landscapeSideBank ? "Use the Song Bank on the left to add your first song." : "Use the library below to add your first song."}</p>
+        <small>First time: tap a song to add it, then drag rows to arrange the setlist.</small>
+      </div>
+    `;
+  }
+  return `
+    <div class="empty-state lineup-start-empty">
+      <div class="lineup-start-mark brand-mark" aria-hidden="true">
+        ${lineupStartMarkSvg()}
+      </div>
+      <strong>Start from the Song Bank</strong>
+      <p>Search the library and tap a song to add it to this setlist.</p>
     </div>
   `;
 }
@@ -1793,12 +2094,19 @@ function normalizeSlidesDraft(slides) {
   return normalized.length ? normalized : [];
 }
 
-function slidesEditorDisplayFontSize(fontSize) {
+function slidesEditorDisplayFontSize(fontSize, lines = []) {
   const rawSize = Number(fontSize) || defaultSlideDesign.fontSize;
+  const previewLines = (Array.isArray(lines) ? lines : [])
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+  const previewArea = slidesEditorFitArea();
+  const previewFit = previewLines.length
+    ? bestSlidesEditorFontForLines(previewLines, previewArea.width, previewArea.height)
+    : rawSize;
   if (window.matchMedia("(min-width: 761px) and (max-width: 1200px) and (orientation: landscape)").matches) {
-    return Math.round(clampNumber(rawSize, 18, 44));
+    return Math.round(clampNumber(Math.min(rawSize, previewFit), minimumSlideEditorFontSize, 44));
   }
-  return Math.round(rawSize);
+  return Math.round(clampNumber(Math.min(rawSize, previewFit), minimumSlideEditorFontSize, maxSlideEditorFontSize));
 }
 
 function slidesFromStudioSong(slideSong) {
@@ -1809,7 +2117,7 @@ function slidesFromStudioSong(slideSong) {
 function slideDesignFromStudioSong(slideSong) {
   const design = slideSong?.design || {};
   const theme = slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme;
-  const fontSize = clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 18, 78);
+  const fontSize = clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, minimumSlideEditorFontSize, maxSlideEditorFontSize);
   return { theme, fontSize };
 }
 
@@ -1835,7 +2143,7 @@ function studioSongFromSlides(song, slides, existingSlideSong = null, design = d
     updatedAt: new Date().toISOString(),
     design: {
       theme: slideThemeOptions.some((option) => option.id === design.theme) ? design.theme : defaultSlideDesign.theme,
-      fontSize: clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, 18, 78),
+      fontSize: clampNumber(Number(design.fontSize) || defaultSlideDesign.fontSize, minimumSlideEditorFontSize, maxSlideEditorFontSize),
     },
     sections: [{
       id: sectionId,
@@ -1859,7 +2167,7 @@ function studioSongFromSlides(song, slides, existingSlideSong = null, design = d
   };
 }
 
-function syncSlidesEditorToStorage(markNeedsReview = true) {
+function syncSlidesEditorToStorage() {
   if (!activeSlidesContext?.lineupId) return null;
   const context = slidesContextForLineup(activeSlidesContext.lineupId);
   if (!context) return null;
@@ -1873,13 +2181,7 @@ function syncSlidesEditorToStorage(markNeedsReview = true) {
     slideSong.id = existingSlideSong?.id || `local-slide-song-${context.item.id}`;
     context.item.localSlideSong = slideSong;
     context.item.slideFlowId = flowId;
-    if (markNeedsReview) {
-      context.item.slidesStatus = "needs-review";
-    } else {
-      context.item.slidesStatus = !context.item.slidesStatus || context.item.slidesStatus === "no-slides"
-        ? "needs-review"
-        : context.item.slidesStatus;
-    }
+    context.item.slidesStatus = activeSlidesDraft.length ? "slides-ready" : "no-slides";
     saveState();
     renderLineup();
     renderSongBank();
@@ -1898,17 +2200,8 @@ function syncSlidesEditorToStorage(markNeedsReview = true) {
   context.item.slideFlowId = flowId;
   context.song.slideSongId = slideSong.id;
   context.song.slideFlowId = flowId;
-  if (markNeedsReview) {
-    context.item.slidesStatus = "needs-review";
-    context.song.slidesStatus = "needs-review";
-  } else {
-    context.item.slidesStatus = !context.item.slidesStatus || context.item.slidesStatus === "no-slides"
-      ? "needs-review"
-      : context.item.slidesStatus;
-    context.song.slidesStatus = !context.song.slidesStatus || context.song.slidesStatus === "no-slides"
-      ? context.item.slidesStatus
-      : context.song.slidesStatus;
-  }
+  context.item.slidesStatus = activeSlidesDraft.length ? "slides-ready" : "no-slides";
+  context.song.slidesStatus = context.item.slidesStatus;
   saveState();
   renderLineup();
   renderSongBank();
@@ -1943,7 +2236,7 @@ function openSlidesEditorForLineup(lineupId) {
   if (context.scope !== "local" && context.slideSong && !context.item.slideSongId) {
     context.item.slideSongId = context.slideSong.id;
     context.item.slideFlowId = context.slideSong.savedFlows?.[0]?.id || "";
-    context.item.slidesStatus = context.item.slidesStatus === "no-slides" ? "needs-review" : context.item.slidesStatus;
+    context.item.slidesStatus = "slides-ready";
     context.song.slideSongId = context.slideSong.id;
     context.song.slideFlowId = context.item.slideFlowId;
     context.song.slidesStatus = context.item.slidesStatus;
@@ -1953,6 +2246,7 @@ function openSlidesEditorForLineup(lineupId) {
   }
 
   if (els.slidesFullLyrics) els.slidesFullLyrics.value = "";
+  activeSlidesSetupMode = !activeSlidesDraft.length;
   if (els.slidesSaveScopeSelect) els.slidesSaveScopeSelect.value = activeSlidesContext.scope;
   renderSlidesEditor();
   openDialog(els.slidesEditorDialog);
@@ -1970,6 +2264,7 @@ function closeSlidesEditor(showSavedToast = false) {
   closeDialog(els.slidesEditorDialog);
   activeSlidesContext = null;
   activeSlidesDraft = [];
+  activeSlidesSetupMode = false;
   activeSlidesUndoStack = [];
   activeSlidesRedoStack = [];
   if (showSavedToast) toast("Progress has been saved.");
@@ -1991,7 +2286,7 @@ function setSlidesSaveScope(scope) {
   context.item.slideSaveScope = nextScope;
   syncSlidesEditorToStorage(true);
   renderSlidesEditor(true);
-  toast(nextScope === "local" ? "Slide edits will stay on this setlist." : "Slide edits will update the song library.");
+  toast(nextScope === "local" ? "Slide edits will stay on this setlist." : "Slide edits will update the song bank.");
 }
 
 function activeSlidesSnapshot() {
@@ -2057,12 +2352,17 @@ function renderSlidesEditor(preserveCurrentText = false) {
     els.slidesEditorStatus.textContent = slidesStatusLabel(hasSlides ? status : "no-slides");
     els.slidesEditorStatus.className = `slides-editor-status ${statusClass}`;
   }
-  if (els.slidesSetupView) els.slidesSetupView.hidden = hasSlides;
-  if (els.slidesWorkspaceView) els.slidesWorkspaceView.hidden = !hasSlides;
+  const showSetupView = activeSlidesSetupMode || !hasSlides;
+  if (els.slidesSetupView) els.slidesSetupView.hidden = !showSetupView;
+  if (els.slidesWorkspaceView) els.slidesWorkspaceView.hidden = showSetupView || !hasSlides;
   if (els.slidesEditorPreviewButton) els.slidesEditorPreviewButton.disabled = !hasSlides;
+  if (els.slidesEditorPresentButton) els.slidesEditorPresentButton.disabled = !hasSlides;
   if (els.slidesEditorReadyButton) {
-    els.slidesEditorReadyButton.disabled = !hasSlides || status === "slides-ready";
-    els.slidesEditorReadyButton.querySelector("span").textContent = status === "slides-ready" ? "Ready" : "Mark ready";
+    els.slidesEditorReadyButton.disabled = !hasSlides;
+    els.slidesEditorReadyButton.querySelector("span").textContent = "Save";
+  }
+  if (els.slidesCreateButton) {
+    els.slidesCreateButton.querySelector("span").textContent = hasSlides ? "Update slides" : "Create slides";
   }
 
   if (!hasSlides) return;
@@ -2090,7 +2390,7 @@ function renderSlidesEditor(preserveCurrentText = false) {
   if (els.slidesLivePreview) {
     els.slidesLivePreview.className = `slides-live-preview theme-${activeSlidesDesign.theme}`;
     els.slidesLivePreview.style.setProperty("--slide-editor-font-size", `${activeSlidesDesign.fontSize}px`);
-    els.slidesLivePreview.style.setProperty("--slide-editor-display-font-size", `${slidesEditorDisplayFontSize(activeSlidesDesign.fontSize)}px`);
+    els.slidesLivePreview.style.setProperty("--slide-editor-display-font-size", `${slidesEditorDisplayFontSize(activeSlidesDesign.fontSize, previewLines)}px`);
     els.slidesLivePreview.innerHTML = `
       <div class="slides-live-lines">
         ${previewLines.slice(0, 6).map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
@@ -2139,10 +2439,30 @@ function createSlidesFromPastedLyrics() {
   recordSlidesUndo();
   activeSlidesDraft = normalizeSlidesDraft(slides);
   activeSlidesIndex = 0;
+  activeSlidesSetupMode = false;
   syncSlidesEditorToStorage(true);
   renderSlidesEditor();
+  fitSlidesEditorDraftToScreen({ announce: false, record: false });
   els.slidesCurrentText?.focus();
-  toast("Slides created for this song.");
+  toast("Slides saved for this song.");
+}
+
+function slidesDraftToFullLyrics(slides = activeSlidesDraft) {
+  return normalizeSlidesDraft(slides)
+    .map((slide) => slide.lines.filter(Boolean).join("\n"))
+    .join("\n\n");
+}
+
+function editSlidesFullLyrics() {
+  if (!activeSlidesDraft.length) return;
+  activeSlidesSetupMode = true;
+  if (els.slidesFullLyrics) {
+    els.slidesFullLyrics.value = slidesDraftToFullLyrics();
+  }
+  renderSlidesEditor(true);
+  window.setTimeout(() => {
+    els.slidesFullLyrics?.focus();
+  }, 0);
 }
 
 function fillSlidesFromSongNotes() {
@@ -2345,7 +2665,7 @@ function splitSlidesEditorSlide() {
 }
 
 function changeSlidesEditorFont(delta) {
-  const nextSize = clampNumber((Number(activeSlidesDesign.fontSize) || defaultSlideDesign.fontSize) + delta, 18, 78);
+  const nextSize = clampNumber((Number(activeSlidesDesign.fontSize) || defaultSlideDesign.fontSize) + delta, minimumSlideEditorFontSize, maxSlideEditorFontSize);
   if (nextSize === activeSlidesDesign.fontSize) return;
   recordSlidesUndo();
   activeSlidesDesign.fontSize = nextSize;
@@ -2397,31 +2717,47 @@ function slideTextFitsAtSize(lines, fontSize, availableWidth, availableHeight) {
   const context = canvas.getContext("2d");
   if (!context) return true;
   context.font = `${slideTextWeight} ${fontSize}px Inter, Arial, Helvetica, sans-serif`;
-  const wrappedLines = lines.reduce((count, line) => count + wrappedLineCount(context, line, availableWidth), 0);
-  const lineHeight = fontSize * 1.05;
-  const gapHeight = Math.max(0, wrappedLines - 1) * fontSize * 0.18;
-  const totalHeight = wrappedLines * lineHeight + gapHeight;
-  return totalHeight <= availableHeight;
+  const cleanedLines = lines.map((line) => String(line || "").trim()).filter(Boolean);
+  const lineCount = Math.max(1, cleanedLines.length);
+  const widest = cleanedLines.reduce((max, line) => Math.max(max, context.measureText(line).width), 0);
+  const lineHeight = fontSize * 1.08;
+  const gapHeight = Math.max(0, lineCount - 1) * fontSize * 0.18;
+  const totalHeight = lineCount * lineHeight + gapHeight;
+  return widest <= availableWidth && totalHeight <= Math.max(0, availableHeight - slideEditorFitSafetyPadding);
 }
 
-function fitSlidesEditorFontToScreen() {
-  if (!activeSlidesDraft.length) return;
+function slidesEditorFitArea() {
   const preview = els.slidesLivePreview;
   const previewRect = preview?.getBoundingClientRect();
-  const lines = activeSlidesDraft[activeSlidesIndex]?.lines?.filter(Boolean) || [""];
   const computed = preview ? window.getComputedStyle(preview) : null;
   const paddingX = computed ? parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight) : 96;
   const paddingY = computed ? parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom) : 96;
   const watermarkReserve = Math.max(42, Math.min(74, (previewRect?.height || 540) * 0.11));
-  const width = Math.max(120, (previewRect?.width || 960) - paddingX - 24);
-  const height = Math.max(90, (previewRect?.height || 540) - paddingY - watermarkReserve);
-  let low = 18;
-  let high = defaultSlideDesign.fontSize;
-  let best = 18;
+  return {
+    width: Math.max(120, (previewRect?.width || 960) - paddingX - 24),
+    height: Math.max(90, (previewRect?.height || 540) - paddingY - watermarkReserve)
+  };
+}
+
+function slidesOutputFitArea() {
+  const width = 1920;
+  const height = 1080;
+  const safeTop = 32;
+  const safeBottom = height - 36;
+  return {
+    width: width * 0.98,
+    height: Math.max(220, safeBottom - safeTop)
+  };
+}
+
+function bestSlidesEditorFontForLines(lines, availableWidth, availableHeight) {
+  let low = minimumSlideEditorFontSize;
+  let high = maxSlideEditorFontSize;
+  let best = minimumSlideEditorFontSize;
 
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
-    if (slideTextFitsAtSize(lines, middle, width, height)) {
+    if (slideTextFitsAtSize(lines, middle, availableWidth, availableHeight)) {
       best = middle;
       low = middle + 1;
     } else {
@@ -2429,13 +2765,28 @@ function fitSlidesEditorFontToScreen() {
     }
   }
 
-  const nextSize = Math.round(clampNumber(best, 18, defaultSlideDesign.fontSize));
-  if (nextSize === activeSlidesDesign.fontSize) return;
-  recordSlidesUndo();
-  activeSlidesDesign.fontSize = nextSize;
+  return best;
+}
+
+function fitSlidesEditorDraftToScreen({ announce = true, record = true } = {}) {
+  if (!activeSlidesDraft.length) return false;
+  const { width, height } = slidesOutputFitArea();
+  const nextSize = activeSlidesDraft.reduce((best, slide) => {
+    const lines = slide?.lines?.filter(Boolean) || [""];
+    return Math.min(best, bestSlidesEditorFontForLines(lines, width, height));
+  }, maxSlideEditorFontSize);
+  const clampedSize = Math.round(clampNumber(nextSize, minimumSlideEditorFontSize, maxSlideEditorFontSize));
+  if (clampedSize === activeSlidesDesign.fontSize) return false;
+  if (record) recordSlidesUndo();
+  activeSlidesDesign.fontSize = clampedSize;
   syncSlidesEditorToStorage(true);
   renderSlidesEditor(true);
-  toast("Text fitted to the slide.");
+  if (announce) toast("Text fitted to the slide.");
+  return true;
+}
+
+function fitSlidesEditorFontToScreen() {
+  fitSlidesEditorDraftToScreen();
 }
 
 function setSlidesEditorTheme(theme) {
@@ -2451,7 +2802,7 @@ function markSlidesEditorReady() {
   if (!activeSlidesDraft.length) return;
   syncSlidesEditorToStorage(false);
   setActiveSlidesStatus("slides-ready");
-  toast("Slides marked ready.");
+  toast("Slides saved.");
 }
 
 function previewSlidesEditorSet() {
@@ -2460,6 +2811,13 @@ function previewSlidesEditorSet() {
   closeSlidesEditor();
   activeSlidePreviewIndex = 0;
   setSlidePreviewOpen(true);
+}
+
+function presentSlidesEditorFullscreen() {
+  if (!activeSlidesDraft.length) return;
+  syncSlidesEditorToStorage(false);
+  closeSlidesEditor();
+  openPresentation({ requestFullscreen: true }).catch((error) => toast(error instanceof Error ? error.message : "Could not open presentation."));
 }
 
 function flattenStudioFlow(sections = [], flow = []) {
@@ -2782,34 +3140,19 @@ async function renderSlidesExportPreview() {
     meta: "",
   }];
   slidesExportPreviewIndex = Math.max(0, Math.min(slidesExportPreviewIndex, previewSlides.length - 1));
-  const slide = previewSlides[slidesExportPreviewIndex];
-  const lines = Array.isArray(slide.lines) && slide.lines.length ? slide.lines : ["Instrumental"];
   const canMovePrevious = slidesExportPreviewIndex > 0;
   const canMoveNext = slidesExportPreviewIndex < previewSlides.length - 1;
-  const isImageSlide = slide.kind === "image" && safeImageValue(slide.image);
-  const themeClass = isImageSlide ? "theme-image" : `theme-${theme.image ? "image" : theme.name}`;
-  const previewStyle = isImageSlide
-    ? `background-image:url("${cssUrl(slide.image)}"); background-size:cover; background-position:center;`
-    : slidesThemePreviewStyle(theme);
   setSlidesCropControlsEnabled(Boolean(theme.image));
-  els.slidesExportPreview.className = `slides-theme-preview ${themeClass}${theme.image || isImageSlide ? " has-custom-image" : ""}${isImageSlide ? " is-full-image-slide" : ""}`;
-  els.slidesExportPreview.setAttribute("style", previewStyle);
+  const canvas = await renderSlideToCanvas(previewSlides[slidesExportPreviewIndex], theme, {
+    ...options,
+    slideIndex: slidesExportPreviewIndex,
+    slideTotal: previewSlides.length,
+  });
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  els.slidesExportPreview.className = "slides-theme-preview rendered-slide-preview";
+  els.slidesExportPreview.removeAttribute("style");
   els.slidesExportPreview.innerHTML = `
-    ${isImageSlide ? "" : `
-      ${options.showTitles && slide.title ? `<span class="preview-slide-title">${escapeHtml(slide.title)}</span>` : ""}
-      ${options.showCount ? `<span class="preview-slide-count-overlay">${slidesExportPreviewIndex + 1} out of ${previewSlides.length}</span>` : ""}
-      <div class="slides-theme-preview-content">
-        <div class="preview-slide-lines">
-          ${lines.slice(0, 4).map((line) => `<strong>${escapeHtml(line)}</strong>`).join("")}
-        </div>
-      </div>
-      ${options.showCredits && slide.credits ? `<small class="preview-slide-credits">${escapeHtml(slide.credits)}</small>` : ""}
-      <div class="preview-slide-brand" aria-hidden="true">
-        <span>Created with</span>
-        <b><i>♪</i> Songleading.net</b>
-        <em>BY BARAK MALICHI</em>
-      </div>
-    `}
+    <img class="slides-export-preview-image" src="${escapeHtml(dataUrl)}" alt="Rendered slide preview ${slidesExportPreviewIndex + 1}" />
     <div class="slides-export-preview-count" aria-live="polite">${slidesExportPreviewIndex + 1} / ${previewSlides.length}</div>
     ${previewSlides.length > 1 ? `
       <div class="slides-export-preview-nav" aria-label="Slide preview navigation">
@@ -2822,6 +3165,68 @@ async function renderSlidesExportPreview() {
       </div>
     ` : ""}
   `;
+}
+
+async function renderPresentationSlide() {
+  if (!els.presentationSlideImage || !presentationSlides.length) return;
+  presentationIndex = Math.max(0, Math.min(presentationIndex, presentationSlides.length - 1));
+  const canvas = await renderSlideToCanvas(presentationSlides[presentationIndex], presentationTheme, {
+    ...presentationOptions,
+    slideIndex: presentationIndex,
+    slideTotal: presentationSlides.length,
+  });
+  els.presentationSlideImage.src = canvas.toDataURL("image/jpeg", 0.92);
+  if (els.presentationCount) els.presentationCount.textContent = `${presentationIndex + 1} / ${presentationSlides.length}`;
+  if (els.presentationPrevButton) els.presentationPrevButton.disabled = presentationIndex <= 0;
+  if (els.presentationNextButton) els.presentationNextButton.disabled = presentationIndex >= presentationSlides.length - 1;
+}
+
+async function openPresentation(options = {}) {
+  commitShowMetaFromFields();
+  if (!prepareSlidesExportControls()) {
+    toast("Add songs with slides before presenting.");
+    return;
+  }
+  presentationSlides = buildLineupSlideDeck();
+  presentationOptions = {
+    showTitles: Boolean(state.show.slideExportShowTitles),
+    showCredits: Boolean(state.show.slideExportShowCredits),
+    showCount: Boolean(state.show.slideExportShowCount),
+  };
+  presentationIndex = 0;
+  if (els.exportDialog?.open) closeDialog(els.exportDialog);
+  if (els.slidesExportDialog?.open) closeDialog(els.slidesExportDialog);
+  openDialog(els.presentationDialog);
+  if (options.requestFullscreen) {
+    const target = els.presentationStage || els.presentationDialog;
+    target?.requestFullscreen?.().catch(() => toast("Fullscreen is blocked by the browser. Use the fullscreen button in the presenter."));
+  }
+  await persistCurrentSlidesExportTheme();
+  presentationTheme = normalizeSlideExportTheme(state.show.slideExportTheme || defaultSlideExportTheme);
+  await renderPresentationSlide();
+}
+
+function closePresentation() {
+  if (document.fullscreenElement === els.presentationStage) {
+    document.exitFullscreen?.().catch(() => {});
+  }
+  closeDialog(els.presentationDialog);
+}
+
+function movePresentation(step) {
+  if (!els.presentationDialog?.open) return;
+  presentationIndex = Math.max(0, Math.min(presentationIndex + step, presentationSlides.length - 1));
+  renderPresentationSlide().catch((error) => toast(error instanceof Error ? error.message : "Could not change slide."));
+}
+
+function togglePresentationFullscreen() {
+  const target = els.presentationStage || els.presentationDialog;
+  if (!target) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.().catch(() => toast("Could not leave fullscreen."));
+    return;
+  }
+  target.requestFullscreen?.().catch(() => toast("Fullscreen is blocked by the browser."));
 }
 
 async function saveCurrentSlidesPreset() {
@@ -3128,7 +3533,7 @@ function wrapCanvasLine(context, line, maxWidth) {
 
 function slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic = false) {
   context.font = slideCanvasFont(fontSize, italic);
-  const wrappedLines = lines.flatMap((line) => wrapCanvasLine(context, line, maxWidth));
+  const wrappedLines = lines.map((line) => String(line || "").trim()).filter(Boolean);
   const lineHeight = fontSize * 1.08;
   const gapHeight = Math.max(0, wrappedLines.length - 1) * fontSize * 0.18;
   const totalHeight = wrappedLines.length * lineHeight + gapHeight;
@@ -3136,10 +3541,11 @@ function slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic = fals
   return { wrappedLines, lineHeight, gapHeight, totalHeight, widest, fontSize };
 }
 
-function fitSlideCanvasText(context, lines, maxWidth, maxHeight, kind) {
+function fitSlideCanvasText(context, lines, maxWidth, maxHeight, kind, maxFontSize = defaultSlideDesign.fontSize) {
   const italic = kind === "note";
-  const maxFont = kind === "missing" ? 58 : kind === "note" ? 68 : defaultSlideDesign.fontSize;
-  const minFont = 22;
+  const designMax = clampNumber(Number(maxFontSize) || defaultSlideDesign.fontSize, minimumSlideEditorFontSize, maxSlideEditorFontSize);
+  const maxFont = kind === "missing" ? Math.min(78, designMax) : kind === "note" ? Math.min(92, designMax) : designMax;
+  const minFont = minimumSlideEditorFontSize;
   let fallback = slideCanvasTextLayout(context, lines, minFont, maxWidth, italic);
   for (let fontSize = maxFont; fontSize >= minFont; fontSize -= 2) {
     const layout = slideCanvasTextLayout(context, lines, fontSize, maxWidth, italic);
@@ -3216,11 +3622,12 @@ async function renderSlideToCanvas(slide, theme = {}, options = {}) {
 
   await drawSlideBackground(context, width, height, theme, kind);
 
-  const maxWidth = width * 0.82;
-  const safeTop = options.showTitles && slide.title ? 108 : 82;
-  const safeBottom = height - 96;
+  const maxWidth = width * 0.98;
+  const safeTop = options.showTitles && slide.title ? 96 : 32;
+  const safeBottom = height - 36;
   const maxHeight = Math.max(220, safeBottom - safeTop);
-  const layout = fitSlideCanvasText(context, lines.length ? lines : ["Instrumental"], maxWidth, maxHeight, kind);
+  const slideDesign = slideDesignFromStudioSong({ design: slide.design || defaultSlideDesign });
+  const layout = fitSlideCanvasText(context, lines.length ? lines : ["Instrumental"], maxWidth, maxHeight, kind, slideDesign.fontSize);
   const textColor = kind === "note" ? palette.note : kind === "missing" ? palette.missing : palette.ink;
   context.save();
   context.textAlign = "center";
@@ -3602,11 +4009,18 @@ async function exportLineupSlides(theme = {}) {
   downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-slides.pptx`, "PowerPoint deck is ready.");
 }
 
-function openSlidesExportDialog() {
-  if (!buildLineupSlideDeck().length) {
-    toast("Add songs before exporting slides.");
-    return;
+function ensureSlidesExportFormInExportDialog() {
+  if (!els.exportSlidesPanel || !els.slidesExportForm) return;
+  if (els.slidesExportForm.parentElement !== els.exportSlidesPanel) {
+    els.exportSlidesPanel.append(els.slidesExportForm);
   }
+}
+
+function prepareSlidesExportControls() {
+  if (!buildLineupSlideDeck().length) {
+    return false;
+  }
+  ensureSlidesExportFormInExportDialog();
   if (els.slidesExportImage) els.slidesExportImage.value = "";
   if (els.slidesShowTitlesToggle) els.slidesShowTitlesToggle.checked = Boolean(state.show.slideExportShowTitles);
   if (els.slidesShowCreditsToggle) els.slidesShowCreditsToggle.checked = Boolean(state.show.slideExportShowCredits);
@@ -3614,9 +4028,16 @@ function openSlidesExportDialog() {
   applySlidesExportThemeControls(state.show.slideExportTheme || defaultSlideExportTheme);
   renderSlidesPresetOptions();
   slidesExportPreviewIndex = 0;
-  if (els.exportDialog?.open) closeDialog(els.exportDialog);
-  openDialog(els.slidesExportDialog);
   renderSlidesExportPreview();
+  return true;
+}
+
+function openSlidesExportDialog() {
+  if (!prepareSlidesExportControls()) {
+    toast("Add songs before exporting slides.");
+    return;
+  }
+  openExportPreview("slides");
 }
 
 async function submitSlidesExport(event) {
@@ -3624,7 +4045,7 @@ async function submitSlidesExport(event) {
   try {
     await persistCurrentSlidesExportTheme();
     await exportLineupSlides(state.show.slideExportTheme);
-    closeDialog(els.slidesExportDialog);
+    closeDialog(els.exportDialog);
   } catch (error) {
     toast(error instanceof Error ? error.message : "Could not export slides.");
   }
@@ -3733,6 +4154,7 @@ function render() {
   renderFilters();
   renderLineup();
   renderSongBank();
+  applySidePanelMode();
   if (slidePreviewOpen) renderSlidePreview();
 }
 
@@ -3748,30 +4170,24 @@ function renderSavedShows() {
   }
   const visibleShows = shows.filter((show) => !isUnchangedDraftShow(show));
   const folders = Array.isArray(state.setlistFolders) ? state.setlistFolders : [];
-  const folderVisibleShows = visibleShows.filter((show) => {
-    if (!activeSetlistFolderId) return true;
-    if (activeSetlistFolderId === "unfiled") return !show.folderId;
-    return show.folderId === activeSetlistFolderId;
-  });
-  if (els.setlistFolderFilters) {
-    els.setlistFolderFilters.innerHTML = `
-      <button class="${!activeSetlistFolderId ? "active" : ""}" data-folder-filter="">All</button>
-      <button class="${activeSetlistFolderId === "unfiled" ? "active" : ""}" data-folder-filter="unfiled">Unfiled</button>
-      ${folders.map((folder) => `<button class="${activeSetlistFolderId === folder.id ? "active" : ""}" data-folder-filter="${folder.id}">${escapeHtml(folder.name)}</button>`).join("")}
-    `;
-  }
+  activeSetlistFolderId = "";
+  const selectedCount = selectedSetlistIds.size;
+  if (els.setlistSelectionBar) els.setlistSelectionBar.hidden = !selectedCount;
+  if (els.setlistSelectionCount) els.setlistSelectionCount.textContent = `${selectedCount} selected`;
+  if (els.deleteShowButton) els.deleteShowButton.disabled = !selectedCount;
   if (els.moveSetlistsFolder) {
     els.moveSetlistsFolder.innerHTML = `
       <option value="">Move selected...</option>
+      <option value="__new">New folder...</option>
       <option value="__unfiled">Unfiled</option>
       ${folders.map((folder) => `<option value="${folder.id}">${escapeHtml(folder.name)}</option>`).join("")}
     `;
-    els.moveSetlistsFolder.disabled = !selectedSetlistIds.size;
+    els.moveSetlistsFolder.disabled = !selectedCount;
   }
-  els.savedShowsList.innerHTML = folderVisibleShows.length
-    ? folderVisibleShows
+  els.savedShowsList.innerHTML = visibleShows.length
+    ? visibleShows
     .map((show) => `
-      <article class="saved-show-chip ${show.id === state.activeShowId ? "active" : ""}" data-show-id="${show.id}">
+      <article class="saved-show-chip ${show.id === state.activeShowId ? "active" : ""} ${selectedSetlistIds.has(show.id) ? "selected" : ""}" data-show-id="${show.id}" aria-selected="${selectedSetlistIds.has(show.id) ? "true" : "false"}">
         <label class="setlist-select" aria-label="Select ${escapeHtml(show.name)}">
           <input type="checkbox" data-select-show="${show.id}" ${selectedSetlistIds.has(show.id) ? "checked" : ""} />
         </label>
@@ -3785,20 +4201,33 @@ function renderSavedShows() {
     : '<div class="empty-state"><div><strong>No saved setlists yet.</strong>Change this setlist to save it.</div></div>';
 }
 
+function applySidePanelMode() {
+  const showingSetlists = sidePanelMode === "shows";
+  const title = showingSetlists ? "Setlists" : "Song bank";
+  els.bankPanel?.classList.toggle("shows-mode", showingSetlists);
+  els.bankPanel?.setAttribute("aria-label", showingSetlists ? "Saved setlists" : "Song bank");
+  if (els.bankPanel) els.bankPanel.dataset.panelTitle = title;
+  if (els.bankHeader) els.bankHeader.dataset.panelTitle = title;
+  if (els.sidePanelTitle) els.sidePanelTitle.textContent = title;
+  if (els.libraryView) els.libraryView.hidden = showingSetlists;
+  if (els.showsView) els.showsView.hidden = !showingSetlists;
+  if (els.newSongButton) els.newSongButton.hidden = showingSetlists;
+  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = showingSetlists;
+  if (els.quickAddButton) els.quickAddButton.hidden = showingSetlists;
+  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = showingSetlists;
+  if (els.addNoteButton) els.addNoteButton.hidden = showingSetlists;
+  if (els.setlistsBackTopButton) els.setlistsBackTopButton.hidden = !showingSetlists;
+  els.showsTabButton?.classList.toggle("active", showingSetlists);
+}
+
 function setSidePanelMode(mode) {
   sidePanelMode = mode === "shows" ? "shows" : "library";
   els.appShell.classList.remove("bank-collapsed");
-  if (sidePanelMode === "shows") setMobileLibraryExpanded(false);
-  els.bankPanel?.classList.toggle("shows-mode", sidePanelMode === "shows");
-  els.bankPanel?.setAttribute("aria-label", sidePanelMode === "shows" ? "Saved setlists" : "Song bank");
-  if (els.sidePanelTitle) els.sidePanelTitle.textContent = sidePanelMode === "shows" ? "Setlists" : "Library";
-  if (els.libraryView) els.libraryView.hidden = sidePanelMode !== "library";
-  if (els.showsView) els.showsView.hidden = sidePanelMode !== "shows";
-  if (els.newSongButton) els.newSongButton.hidden = sidePanelMode !== "library";
-  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = sidePanelMode !== "library";
-  if (els.quickAddButton) els.quickAddButton.hidden = sidePanelMode !== "library";
-  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = sidePanelMode !== "library";
-  els.showsTabButton?.classList.toggle("active", sidePanelMode === "shows");
+  if (isLibraryDrawerLayout() && mobileLibraryState === "minimized") {
+    setMobileLibraryState("middle");
+    return;
+  }
+  applySidePanelMode();
 }
 
 function openSetlistStartDialog() {
@@ -3814,7 +4243,7 @@ const coachSteps = [
   {
     target: () => els.newSongButton,
     title: "Add a song",
-    text: "Click here to add one song to your library."
+    text: "Click here to add one song to your song bank."
   },
   {
     target: () => els.quickAddButton,
@@ -3824,12 +4253,12 @@ const coachSteps = [
   {
     target: () => els.songBankList?.querySelector(".bank-song") || els.songSearch,
     title: "Send songs to the setlist",
-    text: "Click a song or drag it into the lineup."
+    text: "Click a song or drag it into the setlist."
   },
   {
     target: () => els.exportButton,
     title: "Export from here",
-    text: "PDF, DOC, lineup files, print, and slide exports all live in this menu."
+    text: "PDF, DOC, setlist files, print, and slide exports all live in this menu."
   }
 ];
 
@@ -3998,8 +4427,17 @@ function showIntroThenStart() {
   }, 680);
 }
 
+function isPhoneLandscapeLayout() {
+  return window.matchMedia("(max-height: 520px) and (orientation: landscape) and (pointer: coarse)").matches;
+}
+
 function isMobileLayout() {
-  return window.matchMedia("(max-width: 760px)").matches;
+  return window.matchMedia("(max-width: 760px)").matches || isPhoneLandscapeLayout();
+}
+
+function isLandscapeSideBankLayout() {
+  return isPhoneLandscapeLayout()
+    || window.matchMedia("(min-width: 761px) and (max-width: 1200px) and (orientation: landscape) and (pointer: coarse)").matches;
 }
 
 function isTabletPortraitLayout() {
@@ -4007,7 +4445,7 @@ function isTabletPortraitLayout() {
 }
 
 function isLibraryDrawerLayout() {
-  return isMobileLayout() || isTabletPortraitLayout();
+  return (window.matchMedia("(max-width: 760px)").matches && !isPhoneLandscapeLayout()) || isTabletPortraitLayout();
 }
 
 function isTouchReorderLayout() {
@@ -4028,22 +4466,28 @@ function setMobileLibraryState(stateName) {
   els.bankPanel?.style.removeProperty("--mobile-library-height");
   els.appShell?.classList.toggle("bank-collapsed", nextState === "minimized");
   els.bankPanel?.classList.toggle("mobile-expanded", nextState === "full");
-  els.bankPanel?.classList.remove("shows-mode");
-  sidePanelMode = "library";
-  if (els.sidePanelTitle) els.sidePanelTitle.textContent = "Library";
-  if (els.libraryView) els.libraryView.hidden = false;
-  if (els.showsView) els.showsView.hidden = true;
-  if (els.newSongButton) els.newSongButton.hidden = false;
-  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
-  if (els.quickAddButton) els.quickAddButton.hidden = false;
-  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = false;
-  els.showsTabButton?.classList.remove("active");
+  applySidePanelMode();
 }
 
 function openMobileLibraryDrawer(expand = false) {
-  if (!isLibraryDrawerLayout()) return;
+  if (!isLibraryDrawerLayout()) {
+    if (isLandscapeSideBankLayout()) setSidePanelMode("library");
+    return;
+  }
   setSidePanelMode("library");
   setMobileLibraryState(expand ? "full" : "middle");
+}
+
+function handleAddFirstSongAction() {
+  if (state.songs.length) {
+    openMobileLibraryDrawer(true);
+    window.setTimeout(() => {
+      if (isLibraryDrawerLayout()) els.songSearch?.focus({ preventScroll: true });
+    }, 180);
+    return;
+  }
+  populateFormOptions();
+  openSongDialog();
 }
 
 function closeMobileLibraryDrawer() {
@@ -4053,16 +4497,7 @@ function closeMobileLibraryDrawer() {
   }
   setMobileLibraryExpanded(false);
   els.appShell.classList.add("bank-collapsed");
-  sidePanelMode = "library";
-  els.bankPanel?.classList.remove("shows-mode");
-  if (els.sidePanelTitle) els.sidePanelTitle.textContent = "Library";
-  if (els.libraryView) els.libraryView.hidden = false;
-  if (els.showsView) els.showsView.hidden = true;
-  if (els.newSongButton) els.newSongButton.hidden = false;
-  if (els.oneTimeSongButton) els.oneTimeSongButton.hidden = false;
-  if (els.quickAddButton) els.quickAddButton.hidden = false;
-  if (els.addSlideOnlyButton) els.addSlideOnlyButton.hidden = false;
-  els.showsTabButton?.classList.remove("active");
+  applySidePanelMode();
 }
 
 function handleMobileMenuCommand(command) {
@@ -4070,10 +4505,14 @@ function handleMobileMenuCommand(command) {
     setSidePanelMode("shows");
     return;
   }
+  if (command === "home") {
+    openSongleadingHome();
+    return;
+  }
   if (command === "save") {
     commitShowMetaFromFields();
     saveState();
-    toast("Lineup saved on this device.");
+    toast("Setlist saved on this device.");
     return;
   }
   if (command === "export") {
@@ -4122,6 +4561,13 @@ function applySkin(skin) {
   document.documentElement.dataset.skin = nextSkin;
   localStorage.setItem(skinStorageKey, nextSkin);
   updateSkinChoices();
+}
+
+function applyAccent(accent) {
+  const nextAccent = accentChoices.includes(accent) ? accent : "blue";
+  document.documentElement.dataset.accent = nextAccent;
+  localStorage.setItem(accentStorageKey, nextAccent);
+  updateAccentChoices();
 }
 
 function toggleTheme() {
@@ -4183,18 +4629,9 @@ function handleHomeButtonClick(event) {
 }
 
 function renderLineup() {
+  els.lineupRows?.classList.toggle("is-empty", !state.lineup.length);
   if (!state.lineup.length) {
-    els.lineupRows.innerHTML = `
-      <div class="empty-state">
-        <div>
-          <strong>Start this setlist with a song.</strong>
-          Search the library below or add songs from the bank. Slides and ready status will show here as you build.
-          <button class="primary-button mobile-first-song-button" type="button" id="mobileAddFirstSongButton">
-            Add first song
-          </button>
-        </div>
-      </div>
-    `;
+    els.lineupRows.innerHTML = renderEmptyLineupState();
     renderLineupHealth();
     return;
   }
@@ -4208,6 +4645,8 @@ function renderLineup() {
       const category = categoryFor(songCategoryNames(song));
       const slideClass = slidesButtonClass(item);
       const slideTitle = slidesButtonTitle(item);
+      const sheetCount = sheetAttachmentsForLineupItem(item).length;
+      const sheetTitle = sheetCount ? sheetCountLabel(item) : "Add Sheets";
       const readyLabel = item.ready ? "Ready" : "Not ready";
       const metaLabel = songMetaLabel(song);
       return `
@@ -4245,6 +4684,10 @@ function renderLineup() {
             <button class="slides-status-button ${slideClass}" data-action="slides" data-lineup-id="${item.id}" aria-label="Slides for ${escapeHtml(song.title)}: ${slideTitle}" title="${slideTitle}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
               <span>${escapeHtml(slideTitle)}</span>
+            </button>
+            <button class="sheets-status-button ${sheetCount ? "has-sheets" : ""}" data-action="sheets" data-lineup-id="${item.id}" aria-label="${sheetTitle} for ${escapeHtml(song.title)}" title="${sheetTitle}">
+              ${sheetIcon()}
+              <span>${sheetCount || ""}</span>
             </button>
             <button class="ready-toggle ${item.ready ? "ready" : ""}" data-action="ready" data-lineup-id="${item.id}" aria-label="${readyLabel} for ${escapeHtml(song.title)}" title="${readyLabel}">
               ${item.ready ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>' : ""}
@@ -4362,8 +4805,10 @@ function renderSongBank() {
       const addedCount = state.lineup.filter((item) => item.type === "song" && item.songId === song.id).length;
       const alreadyAdded = addedCount > 0;
       const addedTitle = addedCount > 1 ? `Added ${addedCount} times to this setlist` : "Already in this setlist";
+      const sheetCount = song.sheetAttachments?.length || 0;
+      const sheetTitle = sheetCount ? sheetCountLabel(song) : "Add Sheets";
       return `
-        <article class="bank-song ${alreadyAdded ? "is-in-lineup" : ""} ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}" draggable="true" role="button" tabindex="0" aria-label="${alreadyAdded ? `${addedTitle}. Click to add again` : "Add"} ${escapeHtml(song.title)} to lineup" title="${alreadyAdded ? addedTitle : "Click to add to lineup"}">
+        <article class="bank-song ${alreadyAdded ? "is-in-lineup" : ""} ${draggedBankSongId === song.id ? "dragging" : ""}" style="--category-color:${category.color}" data-song-id="${song.id}" draggable="true" role="button" tabindex="0" aria-label="${alreadyAdded ? `${addedTitle}. Click to add again` : "Add"} ${escapeHtml(song.title)} to setlist" title="${alreadyAdded ? addedTitle : "Click to add to setlist"}">
             <span class="bank-song-main">
               ${alreadyAdded ? `<span class="bank-added-badge" title="${addedTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>${addedCount > 1 ? `<span>${addedCount}</span>` : ""}</span>` : ""}
               <span class="song-name">${escapeHtml(song.title)}</span>
@@ -4375,6 +4820,9 @@ function renderSongBank() {
           </button>
           <button class="slides-status-button bank-slides-button ${slidesButtonClass(song)}" data-action="slides" data-song-id="${song.id}" aria-label="Slides for ${escapeHtml(song.title)}: ${slidesButtonTitle(song)}" title="${slidesButtonTitle(song)}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M8 9h8M8 13h5"/></svg>
+          </button>
+          <button class="sheets-status-button bank-sheets-button ${sheetCount ? "has-sheets" : ""}" data-action="sheets" data-song-id="${song.id}" aria-label="${sheetTitle} for ${escapeHtml(song.title)}" title="${sheetTitle}">
+            ${sheetIcon()}
           </button>
           <button class="icon-action bank-edit-button" data-action="edit-bank" data-song-id="${song.id}" aria-label="Edit ${escapeHtml(song.title)}" title="Edit song">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
@@ -4776,7 +5224,7 @@ function addSongToLineup(songId, showMessage = true, insertAt = null) {
   }
   saveState();
   renderLineup();
-  if (showMessage) toast(`Added "${song.title}" to the lineup.`);
+  if (showMessage) toast(`Added "${song.title}" to the setlist.`);
   return lineupItem;
 }
 
@@ -4893,7 +5341,7 @@ function saveNote(event) {
     }
   } else {
     state.lineup.push({ id: makeId("lineup"), type: "note", text });
-    toast("Note added to lineup.");
+    toast("Note added to setlist.");
   }
 
   saveState();
@@ -4949,6 +5397,7 @@ function updateSettingsDialog() {
   const light = document.documentElement.dataset.theme === "light";
   els.settingsThemeText.textContent = light ? "Switch to dark mode" : "Switch to light mode";
   updateSkinChoices();
+  updateAccentChoices();
 }
 
 function updateSkinChoices() {
@@ -4956,6 +5405,16 @@ function updateSkinChoices() {
   const activeSkin = document.documentElement.dataset.skin || "simple";
   els.skinChoiceGrid.querySelectorAll("[data-skin-choice]").forEach((button) => {
     const active = button.dataset.skinChoice === activeSkin;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function updateAccentChoices() {
+  if (!els.accentChoiceGrid) return;
+  const activeAccent = document.documentElement.dataset.accent || "blue";
+  els.accentChoiceGrid.querySelectorAll("[data-accent-choice]").forEach((button) => {
+    const active = button.dataset.accentChoice === activeAccent;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
@@ -5050,22 +5509,52 @@ function deleteCurrentShow() {
   toast("Show deleted.");
 }
 
-function createSetlistFolder() {
-  const name = window.prompt("Folder name");
-  if (!name?.trim()) return;
+function openSetlistFolderDialog({ moveSelection = false } = {}) {
+  setlistFolderDialogMoveSelection = Boolean(moveSelection);
+  if (els.setlistFolderDialogTitle) {
+    els.setlistFolderDialogTitle.textContent = setlistFolderDialogMoveSelection ? "New Folder for Selected" : "New Folder";
+  }
+  if (els.setlistFolderName) els.setlistFolderName.value = "";
+  openDialog(els.setlistFolderDialog);
+  window.setTimeout(() => els.setlistFolderName?.focus(), 0);
+}
+
+function createSetlistFolderFromName(name, { moveSelection = false } = {}) {
+  const folderName = String(name || "").trim();
+  if (!folderName) return null;
   recordLineupUndo();
   state.setlistFolders = Array.isArray(state.setlistFolders) ? state.setlistFolders : [];
-  const folder = { id: makeId("folder"), name: name.trim() };
+  const folder = { id: makeId("folder"), name: folderName };
   state.setlistFolders.push(folder);
-  activeSetlistFolderId = folder.id;
+  if (moveSelection && selectedSetlistIds.size) {
+    state.shows = state.shows.map((show) => selectedSetlistIds.has(show.id) ? { ...show, folderId: folder.id } : show);
+    selectedSetlistIds = new Set();
+  }
   saveState();
   renderSavedShows();
-  toast("Folder created.");
+  toast(moveSelection ? "Folder created and selected setlists moved." : "Folder created.");
+  return folder;
+}
+
+function createSetlistFolder() {
+  openSetlistFolderDialog();
+}
+
+function saveSetlistFolderFromDialog(event) {
+  event.preventDefault();
+  const folder = createSetlistFolderFromName(els.setlistFolderName?.value, {
+    moveSelection: setlistFolderDialogMoveSelection,
+  });
+  if (!folder) {
+    els.setlistFolderName?.focus();
+    return;
+  }
+  closeDialog(els.setlistFolderDialog);
 }
 
 function deleteSelectedSetlists() {
   if (!selectedSetlistIds.size) {
-    deleteCurrentShow();
+    toast("Press and hold a setlist to select it first.");
     return;
   }
   const nextShows = state.shows.filter((show) => !selectedSetlistIds.has(show.id));
@@ -5089,6 +5578,10 @@ function deleteSelectedSetlists() {
 
 function moveSelectedSetlists(folderId) {
   if (!selectedSetlistIds.size) return;
+  if (folderId === "__new") {
+    openSetlistFolderDialog({ moveSelection: true });
+    return;
+  }
   const nextFolderId = folderId === "__unfiled" ? "" : folderId;
   recordLineupUndo();
   state.shows = state.shows.map((show) => selectedSetlistIds.has(show.id) ? { ...show, folderId: nextFolderId } : show);
@@ -5096,6 +5589,62 @@ function moveSelectedSetlists(folderId) {
   saveState();
   renderSavedShows();
   toast(nextFolderId ? "Setlists moved." : "Setlists moved to Unfiled.");
+}
+
+function toggleSetlistSelection(showId, forceSelected) {
+  if (!showId) return;
+  const selected = typeof forceSelected === "boolean" ? forceSelected : !selectedSetlistIds.has(showId);
+  if (selected) selectedSetlistIds.add(showId);
+  else selectedSetlistIds.delete(showId);
+  renderSavedShows();
+}
+
+function clearSetlistLongPressTimer() {
+  window.clearTimeout(setlistLongPressTimer);
+  setlistLongPressTimer = null;
+  setlistLongPressTargetId = "";
+}
+
+function bindSetlistLongPressSelection() {
+  if (!els.savedShowsList || els.savedShowsList.dataset.longPressBound) return;
+  els.savedShowsList.dataset.longPressBound = "true";
+  let press = null;
+
+  els.savedShowsList.addEventListener("pointerdown", (event) => {
+    const chip = event.target.closest?.(".saved-show-chip");
+    if (!chip || event.target.closest("input, select")) return;
+    clearSetlistLongPressTimer();
+    press = {
+      pointerId: event.pointerId,
+      showId: chip.dataset.showId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    setlistLongPressTargetId = press.showId;
+    setlistLongPressTimer = window.setTimeout(() => {
+      if (!press?.showId) return;
+      suppressNextSetlistClickId = press.showId;
+      toggleSetlistSelection(press.showId, true);
+      press = null;
+      setlistLongPressTimer = null;
+      setlistLongPressTargetId = "";
+    }, 520);
+  });
+
+  els.savedShowsList.addEventListener("pointermove", (event) => {
+    if (!press || event.pointerId !== press.pointerId) return;
+    if (Math.hypot(event.clientX - press.startX, event.clientY - press.startY) > 8) {
+      press = null;
+      clearSetlistLongPressTimer();
+    }
+  });
+
+  const endPress = (event) => {
+    if (press && event.pointerId === press.pointerId) press = null;
+    clearSetlistLongPressTimer();
+  };
+  els.savedShowsList.addEventListener("pointerup", endPress);
+  els.savedShowsList.addEventListener("pointercancel", endPress);
 }
 
 function setRailActive(button) {
@@ -5133,10 +5682,33 @@ function getExportItems() {
   return exportItems;
 }
 
-function openExportPreview() {
+function setExportTab(tab = "setlist") {
+  const selectedTab = ["setlist", "slides", "sheets"].includes(tab) ? tab : "setlist";
+  const showSetlist = selectedTab === "setlist";
+  const exportSettings = els.exportDialog?.querySelector(".export-settings");
+  const exportActions = els.exportDialog?.querySelector(".export-actions");
+  els.exportTabButtons?.forEach((button) => {
+    const active = button.dataset.exportTab === selectedTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  if (exportSettings) exportSettings.hidden = !showSetlist;
+  if (els.exportPreview) els.exportPreview.hidden = !showSetlist;
+  if (exportActions) exportActions.hidden = !showSetlist;
+  if (els.exportSlidesPanel) els.exportSlidesPanel.hidden = selectedTab !== "slides";
+  if (els.exportSheetsPanel) els.exportSheetsPanel.hidden = selectedTab !== "sheets";
+  if (selectedTab === "slides") prepareSlidesExportControls();
+  if (selectedTab === "sheets") renderSheetPackSelection();
+}
+
+function openExportPreview(tab = "setlist") {
   const exportItems = getExportItems();
-  if (!exportItems.length) {
+  if (tab === "setlist" && !exportItems.length) {
     toast("Add songs or notes before exporting.");
+    return;
+  }
+  if (tab === "slides" && !buildLineupSlideDeck().length) {
+    toast("Add songs before exporting slides.");
     return;
   }
 
@@ -5144,7 +5716,8 @@ function openExportPreview() {
   if (els.exportRealKeyToggle) els.exportRealKeyToggle.checked = false;
   hideDownloadReady();
   setExportOrientation("portrait");
-  renderExportPreview(exportItems);
+  if (exportItems.length) renderExportPreview(exportItems);
+  setExportTab(tab);
   openDialog(els.exportDialog);
 }
 
@@ -5225,9 +5798,223 @@ function exportLineup(format) {
   };
 }
 
-function downloadBlob(blob, fileName, message = "File is ready.") {
+function sheetPackGroups() {
+  return state.lineup
+    .filter((item) => item.type === "song" && sheetAttachmentsForLineupItem(item).length)
+    .map((item) => ({
+      item,
+      song: songForLineupItem(item),
+      attachments: sheetAttachmentsForLineupItem(item),
+    }))
+    .filter((group) => group.song && group.attachments.length);
+}
+
+function renderSheetPackSelection() {
+  if (!els.sheetPackSelection) return;
+  const groups = sheetPackGroups();
+  if (!groups.length) {
+    els.sheetPackSelection.innerHTML = `
+      <div class="empty-state">
+        <div><strong>No sheets attached yet.</strong>Use the Sheets button on a song row to add photos or PDFs.</div>
+      </div>
+    `;
+    if (els.exportSheetPackButton) els.exportSheetPackButton.disabled = true;
+    return;
+  }
+  if (els.exportSheetPackButton) els.exportSheetPackButton.disabled = false;
+  els.sheetPackSelection.innerHTML = groups.map(({ item, song, attachments }, index) => `
+    <section class="sheet-pack-song" data-sheet-export-group="${item.id}">
+      <label class="sheet-pack-song-title">
+        <input type="checkbox" data-sheet-export-song="${item.id}" checked />
+        <span>${index + 1}. ${escapeHtml(song.title)}</span>
+      </label>
+      <div class="sheet-pack-files">
+        ${attachments.map((attachment) => `
+          <label class="sheet-pack-file">
+            <input type="checkbox" data-sheet-export-attachment="${attachment.id}" data-lineup-id="${item.id}" checked />
+            <span>
+              <strong>${escapeHtml(attachment.name)}</strong>
+              <small>${attachment.mimeType === "application/pdf" ? `Whole PDF · ${attachment.pageCount || 1} page${attachment.pageCount === 1 ? "" : "s"}` : "Image"}</small>
+            </span>
+          </label>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function selectedSheetPackEntries() {
+  const checked = new Set(Array.from(els.sheetPackSelection?.querySelectorAll("[data-sheet-export-attachment]:checked") || [])
+    .map((input) => `${input.dataset.lineupId}:${input.dataset.sheetExportAttachment}`));
+  return sheetPackGroups().flatMap(({ item, song, attachments }) => attachments
+    .filter((attachment) => checked.has(`${item.id}:${attachment.id}`))
+    .map((attachment) => ({ item, song, attachment })));
+}
+
+function fitRect(contentWidth, contentHeight, box) {
+  const scale = Math.min(box.width / contentWidth, box.height / contentHeight);
+  const width = contentWidth * scale;
+  const height = contentHeight * scale;
+  return {
+    x: box.x + (box.width - width) / 2,
+    y: box.y + (box.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+function drawSheetPackLabel(page, label, font, PDFLib) {
+  const { width, height } = page.getSize();
+  page.drawRectangle({
+    x: 0,
+    y: height - 22,
+    width,
+    height: 22,
+    color: PDFLib.rgb(1, 1, 1),
+    opacity: 0.92,
+  });
+  page.drawText(safeText(label, 110), {
+    x: 18,
+    y: height - 15,
+    size: 8,
+    font,
+    color: PDFLib.rgb(0.08, 0.1, 0.12),
+  });
+}
+
+function drawSheetPackStrokes(page, strokes, rect, PDFLib) {
+  strokes.forEach((stroke) => {
+    const points = stroke.points || [];
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1];
+      const end = points[index];
+      page.drawLine({
+        start: {
+          x: rect.x + start[0] * rect.width,
+          y: rect.y + (1 - start[1]) * rect.height,
+        },
+        end: {
+          x: rect.x + end[0] * rect.width,
+          y: rect.y + (1 - end[1]) * rect.height,
+        },
+        thickness: stroke.width || 3,
+        color: PDFLib.rgb(0.84, 0.14, 0.14),
+        opacity: 0.92,
+      });
+    }
+  });
+}
+
+function blobToArrayBuffer(blob) {
+  return blob.arrayBuffer ? blob.arrayBuffer() : new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(reader.error || new Error("Could not read file.")));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function loadImageForExport(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That image cannot be exported here. Try a JPG, PNG, or PDF."));
+    };
+    image.src = url;
+  });
+}
+
+async function imageBlobToPngBytes(blob) {
+  const image = await loadImageForExport(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, image.naturalWidth || image.width);
+  canvas.height = Math.max(1, image.naturalHeight || image.height);
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const pngBlob = await new Promise((resolve, reject) => {
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Could not prepare image for PDF.")), "image/png");
+  });
+  return { bytes: await blobToArrayBuffer(pngBlob), width: canvas.width, height: canvas.height };
+}
+
+async function addImageSheetToPdf(pdf, entry, blob, font, PDFLib) {
+  const page = pdf.addPage([612, 792]);
+  const { bytes, width, height } = await imageBlobToPngBytes(blob);
+  const embedded = await pdf.embedPng(bytes);
+  const imageRect = fitRect(width, height, {
+    x: 28,
+    y: 28,
+    width: 556,
+    height: 724,
+  });
+  drawSheetPackLabel(page, `${entry.song.title} · ${entry.attachment.name}`, font, PDFLib);
+  page.drawImage(embedded, imageRect);
+  drawSheetPackStrokes(page, getSheetPageStrokes(entry.attachment, 0), imageRect, PDFLib);
+}
+
+async function addPdfSheetToPdf(pdf, entry, blob, font, PDFLib) {
+  const source = await PDFLib.PDFDocument.load(await blobToArrayBuffer(blob), { ignoreEncryption: true });
+  const pageIndexes = source.getPageIndices();
+  const pages = await pdf.copyPages(source, pageIndexes);
+  pages.forEach((page, index) => {
+    pdf.addPage(page);
+    const { width, height } = page.getSize();
+    const label = `${entry.song.title} · ${entry.attachment.name}${pages.length > 1 ? ` · p.${index + 1}` : ""}`;
+    drawSheetPackLabel(page, label, font, PDFLib);
+    drawSheetPackStrokes(page, getSheetPageStrokes(entry.attachment, index), { x: 0, y: 0, width, height }, PDFLib);
+  });
+}
+
+async function exportSheetPackPdf() {
+  const entries = selectedSheetPackEntries();
+  if (!entries.length) {
+    toast("Choose at least one sheet to export.");
+    return;
+  }
+  const PDFLib = window.PDFLib;
+  if (!PDFLib?.PDFDocument) {
+    toast("PDF export is still loading. Try again in a moment.");
+    return;
+  }
+  try {
+    const pdf = await PDFLib.PDFDocument.create();
+    const font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    let exported = 0;
+    for (const entry of entries) {
+      const blob = await readSheetBlob(entry.attachment.localKey);
+      if (!blob) continue;
+      if (entry.attachment.mimeType === "application/pdf") {
+        await addPdfSheetToPdf(pdf, entry, blob, font, PDFLib);
+      } else {
+        await addImageSheetToPdf(pdf, entry, blob, font, PDFLib);
+      }
+      exported += 1;
+    }
+    if (!exported) {
+      toast("Those sheet files are not saved on this device.");
+      return;
+    }
+    const bytes = await pdf.save();
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    await downloadBlob(blob, `${safeFileName(state.show.name || "lineup")}-sheet-pack.pdf`, "Sheet pack PDF is ready.");
+  } catch (error) {
+    console.error(error);
+    toast(error instanceof Error ? error.message : "Could not export sheet pack.");
+  }
+}
+
+async function downloadBlob(blob, fileName, message = "File is ready.") {
   if (!blob?.size) {
     toast("Could not create the file.");
+    return;
+  }
+  if (isNativeFileBridgeAvailable() && await shareBlobWithNative(blob, fileName, message)) {
     return;
   }
   const readyLink = showDownloadReady(blob, fileName, message);
@@ -5276,6 +6063,12 @@ function prepareExportAnchor(event, format) {
     return;
   }
 
+  if (isNativeFileBridgeAvailable()) {
+    event.preventDefault();
+    downloadBlob(result.blob, result.fileName, result.message);
+    return;
+  }
+
   const previousUrl = link.dataset.url;
   if (previousUrl) URL.revokeObjectURL(previousUrl);
   const url = URL.createObjectURL(result.blob);
@@ -5287,6 +6080,7 @@ function prepareExportAnchor(event, format) {
 }
 
 function saveDataUrlFile(dataUrl, fileName, message = "File is ready.") {
+  if (shareDataUrlWithNative(dataUrl, fileName, message)) return;
   const readyLink = showDownloadReady(dataUrl, fileName, message);
   readyLink.click();
   toast(`${message} If it did not download, press the ready link.`);
@@ -5299,6 +6093,62 @@ function blobToDataUrl(blob) {
     reader.addEventListener("error", () => reject(reader.error || new Error("Could not prepare file.")));
     reader.readAsDataURL(blob);
   });
+}
+
+function nativeFileBridge() {
+  if (window.lineupNativeFile?.shareFile) return window.lineupNativeFile;
+  const handler = window.webkit?.messageHandlers?.lineupNativeFile;
+  if (!handler?.postMessage) return null;
+  return {
+    shareFile(payload) {
+      handler.postMessage(payload);
+      return true;
+    },
+  };
+}
+
+function isNativeFileBridgeAvailable() {
+  return Boolean(nativeFileBridge());
+}
+
+function mimeTypeFromDataUrl(dataUrl) {
+  return /^data:([^;,]+)/.exec(String(dataUrl || ""))?.[1] || "application/octet-stream";
+}
+
+function shareDataUrlWithNative(dataUrl, fileName, message = "File is ready.") {
+  const bridge = nativeFileBridge();
+  if (!bridge || !dataUrl) return false;
+  try {
+    bridge.shareFile({
+      fileName,
+      message,
+      mimeType: mimeTypeFromDataUrl(dataUrl),
+      dataUrl,
+    });
+    toast(`${message} Choose where to save or share it.`);
+    return true;
+  } catch (error) {
+    console.warn("Native file share failed.", error);
+    return false;
+  }
+}
+
+async function shareBlobWithNative(blob, fileName, message = "File is ready.") {
+  const bridge = nativeFileBridge();
+  if (!bridge) return false;
+  try {
+    bridge.shareFile({
+      fileName,
+      message,
+      mimeType: blob.type || "application/octet-stream",
+      dataUrl: await blobToDataUrl(blob),
+    });
+    toast(`${message} Choose where to save or share it.`);
+    return true;
+  } catch (error) {
+    console.warn("Native file share failed.", error);
+    return false;
+  }
 }
 
 async function saveExportBlob(blob, fileName, message = "File is ready.") {
@@ -6140,7 +6990,7 @@ function buildLineupDownload() {
   return {
     blob,
     fileName: `${safeFileName(state.show.name || "lineup")}.lineup`,
-    message: "Lineup file is ready.",
+    message: "Setlist file is ready.",
   };
 }
 
@@ -6167,10 +7017,10 @@ function importLineupFile(file) {
       saveState();
       closeDialog(els.shareDialog);
       render();
-      toast("Lineup file opened and saved on this device.");
+      toast("Setlist file opened and saved on this device.");
     } catch (error) {
-      console.warn("Lineup file was rejected.", error);
-      toast(error instanceof Error ? error.message : "That lineup file could not be opened safely.");
+      console.warn("Setlist file was rejected.", error);
+      toast(error instanceof Error ? error.message : "That setlist file could not be opened safely.");
     }
   });
 }
@@ -6202,11 +7052,567 @@ async function copyShareLink() {
   }
 }
 
-function handleLineupAction(action, lineupId, songId) {
+function openSheetDb() {
+  if (!("indexedDB" in window)) return Promise.reject(new Error("This browser cannot store sheets locally."));
+  if (sheetDbPromise) return sheetDbPromise;
+  sheetDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(sheetDbName, 1);
+    request.addEventListener("upgradeneeded", () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(sheetDbStore)) db.createObjectStore(sheetDbStore);
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error || new Error("Could not open local sheet storage.")));
+  });
+  return sheetDbPromise;
+}
+
+async function readSheetBlob(localKey) {
+  const db = await openSheetDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(sheetDbStore, "readonly").objectStore(sheetDbStore).get(localKey);
+    request.addEventListener("success", () => resolve(request.result || null));
+    request.addEventListener("error", () => reject(request.error || new Error("Could not read sheet file.")));
+  });
+}
+
+async function writeSheetBlob(localKey, blob) {
+  const db = await openSheetDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(sheetDbStore, "readwrite").objectStore(sheetDbStore).put(blob, localKey);
+    request.addEventListener("success", () => resolve(true));
+    request.addEventListener("error", () => reject(request.error || new Error("Could not save sheet file.")));
+  });
+}
+
+async function deleteSheetBlob(localKey) {
+  if (!localKey) return;
+  try {
+    const db = await openSheetDb();
+    await new Promise((resolve, reject) => {
+      const request = db.transaction(sheetDbStore, "readwrite").objectStore(sheetDbStore).delete(localKey);
+      request.addEventListener("success", () => resolve(true));
+      request.addEventListener("error", () => reject(request.error || new Error("Could not remove sheet file.")));
+    });
+  } catch (error) {
+    console.warn("Sheet file cleanup failed.", error);
+  }
+}
+
+function inferSheetMimeType(file) {
+  const fileType = safeSheetMimeType(file?.type);
+  if (fileType) return fileType;
+  const name = String(file?.name || "").toLowerCase();
+  if (name.endsWith(".pdf")) return "application/pdf";
+  if (/\.(png)$/i.test(name)) return "image/png";
+  if (/\.(jpe?g)$/i.test(name)) return "image/jpeg";
+  if (/\.(webp)$/i.test(name)) return "image/webp";
+  if (/\.(gif)$/i.test(name)) return "image/gif";
+  if (/\.(bmp)$/i.test(name)) return "image/bmp";
+  return "";
+}
+
+function activeSheetsItem() {
+  if (activeSheetsMode === "song") {
+    return state.songs.find((song) => song.id === activeSheetsSongId) || null;
+  }
+  return state.lineup.find((item) => item.id === activeSheetsLineupId && item.type === "song") || null;
+}
+
+function sheetAttachmentsForLineupItem(item) {
+  if (!item) return [];
+  if (item.songId) {
+    const song = state.songs.find((candidate) => candidate.id === item.songId);
+    return mergeSheetAttachments(song?.sheetAttachments, item.sheetAttachments);
+  }
+  return normalizeSheetAttachments(item.sheetAttachments);
+}
+
+function activeSheetAttachment() {
+  const item = activeSheetsItem();
+  return item?.sheetAttachments?.find((attachment) => attachment.id === activeSheetId) || item?.sheetAttachments?.[0] || null;
+}
+
+function getSheetPageStrokes(attachment, pageIndex = activeSheetPageIndex) {
+  if (!attachment) return [];
+  attachment.annotations = normalizeSheetAnnotations(attachment.annotations);
+  const key = String(clampNumber(Math.floor(Number(pageIndex) || 0), 0, (attachment.pageCount || 1) - 1));
+  attachment.annotations[key] = safeArray(attachment.annotations[key], importLimits.sheetStrokes).map(normalizeSheetStroke).filter(Boolean);
+  return attachment.annotations[key];
+}
+
+function sheetCountLabel(item) {
+  const count = item?.type === "song"
+    ? sheetAttachmentsForLineupItem(item).length
+    : item?.sheetAttachments?.length || 0;
+  if (!count) return "Sheets";
+  return count === 1 ? "1 Sheet" : `${count} Sheets`;
+}
+
+function sheetIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 13h8M8 17h5"/></svg>`;
+}
+
+function openSheetsDialog(lineupId) {
+  const item = state.lineup.find((candidate) => candidate.id === lineupId && candidate.type === "song");
+  if (!item) return;
+  activeSheetsLineupId = lineupId;
+  activeSheetsSongId = item.songId || "";
+  activeSheetsMode = item.songId ? "song" : "lineup";
+  if (item.songId && item.sheetAttachments?.length) {
+    const song = state.songs.find((candidate) => candidate.id === item.songId);
+    if (song) {
+      song.sheetAttachments = mergeSheetAttachments(song.sheetAttachments, item.sheetAttachments);
+      item.sheetAttachments = [];
+      saveState();
+    }
+  }
+  const target = activeSheetsItem();
+  target.sheetAttachments = normalizeSheetAttachments(target.sheetAttachments);
+  activeSheetId = target.sheetAttachments[0]?.id || "";
+  activeSheetPageIndex = 0;
+  if (els.sheetsDialogTitle) {
+    const song = songForLineupItem(item);
+    els.sheetsDialogTitle.textContent = `${song?.title || "Song"} Sheets`;
+  }
+  openDialog(els.sheetsDialog);
+  renderSheetsDialog();
+}
+
+function openLibrarySheetsDialog(songId) {
+  const song = state.songs.find((candidate) => candidate.id === songId);
+  if (!song) return;
+  activeSheetsMode = "song";
+  activeSheetsSongId = song.id;
+  activeSheetsLineupId = "";
+  song.sheetAttachments = normalizeSheetAttachments(song.sheetAttachments);
+  activeSheetId = song.sheetAttachments[0]?.id || "";
+  activeSheetPageIndex = 0;
+  if (els.sheetsDialogTitle) els.sheetsDialogTitle.textContent = `${song.title} Sheets`;
+  openDialog(els.sheetsDialog);
+  renderSheetsDialog();
+}
+
+function closeSheetsDialog() {
+  if (sheetPreviewUrl) {
+    URL.revokeObjectURL(sheetPreviewUrl);
+    sheetPreviewUrl = "";
+  }
+  closeDialog(els.sheetsDialog);
+  activeSheetsLineupId = "";
+  activeSheetsSongId = "";
+  activeSheetsMode = "lineup";
+  activeSheetId = "";
+  activeSheetPageIndex = 0;
+}
+
+function chooseSheetFiles(mode = "add", attachmentId = "") {
+  if (!els.sheetFileInput) return;
+  sheetFileMode = mode;
+  sheetReplaceId = attachmentId;
+  els.sheetFileInput.value = "";
+  els.sheetFileInput.multiple = mode !== "replace";
+  els.sheetFileInput.click();
+}
+
+async function sheetAttachmentFromFile(file) {
+  const mimeType = inferSheetMimeType(file);
+  if (!mimeType) throw new Error("Use a PDF or image file.");
+  if (file.size > sheetFileMaxBytes) throw new Error("That sheet file is too large.");
+  let pageCount = 1;
+  if (mimeType === "application/pdf" && window.PDFLib?.PDFDocument) {
+    try {
+      const source = await window.PDFLib.PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+      pageCount = clampNumber(source.getPageCount(), 1, importLimits.sheetPages);
+    } catch (error) {
+      console.warn("PDF page count could not be read.", error);
+      pageCount = 1;
+    }
+  }
+  const id = makeId("sheet");
+  const name = safeText(file.name.replace(/\.[^.]+$/, ""), 120, "Sheet") || "Sheet";
+  return {
+    id,
+    localKey: id,
+    name,
+    fileName: safeText(file.name, 160, name) || name,
+    mimeType,
+    size: file.size || 0,
+    pageCount,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    annotations: {},
+  };
+}
+
+async function handleSheetFileInputChange(event) {
+  const item = activeSheetsItem();
+  const files = Array.from(event.target.files || []);
+  event.target.value = "";
+  if (!item || !files.length) return;
+  try {
+    recordLineupUndo();
+    item.sheetAttachments = normalizeSheetAttachments(item.sheetAttachments);
+    if (sheetFileMode === "replace") {
+      const index = item.sheetAttachments.findIndex((attachment) => attachment.id === sheetReplaceId);
+      if (index < 0) return;
+      const previous = item.sheetAttachments[index];
+      const next = await sheetAttachmentFromFile(files[0]);
+      await writeSheetBlob(next.localKey, files[0]);
+      item.sheetAttachments[index] = {
+        ...next,
+        id: previous.id,
+        localKey: next.localKey,
+        name: previous.name || next.name,
+      };
+      if (previous.localKey !== next.localKey) deleteSheetBlob(previous.localKey);
+      activeSheetId = previous.id;
+      activeSheetPageIndex = 0;
+      toast("Sheet replaced.");
+    } else {
+      const nextAttachments = [];
+      for (const file of files) {
+        const attachment = await sheetAttachmentFromFile(file);
+        await writeSheetBlob(attachment.localKey, file);
+        nextAttachments.push(attachment);
+      }
+      item.sheetAttachments.push(...nextAttachments);
+      activeSheetId = nextAttachments[0]?.id || activeSheetId;
+      activeSheetPageIndex = 0;
+      toast(nextAttachments.length === 1 ? "Sheet added." : "Sheets added.");
+    }
+    saveState();
+    renderSheetsDialog();
+    renderLineup();
+    renderSongBank();
+  } catch (error) {
+    console.error(error);
+    toast(error instanceof Error ? error.message : "Could not add that sheet.");
+  }
+}
+
+function renameActiveSheet() {
+  const attachment = activeSheetAttachment();
+  if (!attachment) return;
+  const nextName = safeText(window.prompt("Sheet name", attachment.name) || "", 120);
+  if (!nextName) return;
+  recordLineupUndo();
+  attachment.name = nextName;
+  attachment.updatedAt = new Date().toISOString();
+  saveState();
+  renderSheetsDialog();
+  renderLineup();
+  renderSongBank();
+}
+
+function removeActiveSheet() {
+  const item = activeSheetsItem();
+  const attachment = activeSheetAttachment();
+  if (!item || !attachment) return;
+  if (!window.confirm(`Remove "${attachment.name}" from this song?`)) return;
+  recordLineupUndo();
+  item.sheetAttachments = item.sheetAttachments.filter((candidate) => candidate.id !== attachment.id);
+  deleteSheetBlob(attachment.localKey);
+  activeSheetId = item.sheetAttachments[0]?.id || "";
+  activeSheetPageIndex = 0;
+  saveState();
+  renderSheetsDialog();
+  renderLineup();
+  renderSongBank();
+  toast("Sheet removed.");
+}
+
+function moveActiveSheet(direction) {
+  const item = activeSheetsItem();
+  if (!item) return;
+  const index = item.sheetAttachments.findIndex((attachment) => attachment.id === activeSheetId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= item.sheetAttachments.length) return;
+  recordLineupUndo();
+  const [attachment] = item.sheetAttachments.splice(index, 1);
+  item.sheetAttachments.splice(nextIndex, 0, attachment);
+  saveState();
+  renderSheetsDialog();
+  renderLineup();
+  renderSongBank();
+}
+
+function setSheetTool(tool) {
+  sheetTool = tool === "eraser" ? "eraser" : "pen";
+  els.sheetPenButton?.classList.toggle("active", sheetTool === "pen");
+  els.sheetEraserButton?.classList.toggle("active", sheetTool === "eraser");
+}
+
+function renderSheetsDialog() {
+  const item = activeSheetsItem();
+  const attachments = item?.sheetAttachments || [];
+  if (!item || !els.sheetsList) return;
+  if (!attachments.some((attachment) => attachment.id === activeSheetId)) {
+    activeSheetId = attachments[0]?.id || "";
+    activeSheetPageIndex = 0;
+  }
+  const active = activeSheetAttachment();
+  const activeIndex = attachments.findIndex((attachment) => attachment.id === active?.id);
+  els.sheetsList.innerHTML = attachments.length
+    ? attachments.map((attachment, index) => `
+        <button class="sheet-item ${attachment.id === activeSheetId ? "active" : ""}" type="button" data-sheet-id="${attachment.id}">
+          <span class="sheet-item-name">${escapeHtml(attachment.name)}</span>
+          <span class="sheet-item-meta">${attachment.mimeType === "application/pdf" ? `${attachment.pageCount || 1} page PDF` : "Image"} · ${index + 1}</span>
+        </button>
+      `).join("")
+    : `<div class="empty-state"><div><strong>No sheets yet.</strong>Upload a photo, screenshot, or PDF for this song.</div></div>`;
+  if (els.replaceSheetButton) els.replaceSheetButton.disabled = !active;
+  if (els.renameSheetButton) els.renameSheetButton.disabled = !active;
+  if (els.moveSheetUpButton) els.moveSheetUpButton.disabled = !active || activeIndex <= 0;
+  if (els.moveSheetDownButton) els.moveSheetDownButton.disabled = !active || activeIndex < 0 || activeIndex >= attachments.length - 1;
+  if (els.removeSheetButton) els.removeSheetButton.disabled = !active;
+  if (els.undoSheetMarkupButton) els.undoSheetMarkupButton.disabled = !active || !getSheetPageStrokes(active).length;
+  if (els.clearSheetMarkupButton) els.clearSheetMarkupButton.disabled = !active || !getSheetPageStrokes(active).length;
+  activeSheetPageIndex = active ? clampNumber(activeSheetPageIndex, 0, (active.pageCount || 1) - 1) : 0;
+  if (els.prevSheetPageButton) els.prevSheetPageButton.disabled = !active || active.pageCount <= 1 || activeSheetPageIndex <= 0;
+  if (els.nextSheetPageButton) els.nextSheetPageButton.disabled = !active || active.pageCount <= 1 || activeSheetPageIndex >= active.pageCount - 1;
+  if (els.sheetPageLabel) {
+    els.sheetPageLabel.textContent = active ? `Page ${activeSheetPageIndex + 1} of ${active.pageCount || 1}` : "No sheet";
+  }
+  if (els.sheetsPreviewMeta) {
+    els.sheetsPreviewMeta.textContent = active
+      ? `${active.fileName || active.name}${active.mimeType === "application/pdf" ? ` · PDF` : ""}`
+      : "Upload a photo or PDF to preview and scribble.";
+  }
+  setSheetTool(sheetTool);
+  renderSheetPreview().catch((error) => {
+    console.error(error);
+    toast(error instanceof Error ? error.message : "Could not preview sheet.");
+  });
+}
+
+async function renderSheetPreview() {
+  if (sheetPreviewRenderQueued) return;
+  sheetPreviewRenderQueued = true;
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  sheetPreviewRenderQueued = false;
+  const attachment = activeSheetAttachment();
+  if (sheetPreviewUrl) {
+    URL.revokeObjectURL(sheetPreviewUrl);
+    sheetPreviewUrl = "";
+  }
+  if (!attachment) {
+    if (els.sheetsPreviewEmpty) {
+      els.sheetsPreviewEmpty.hidden = false;
+      els.sheetsPreviewEmpty.innerHTML = "<div><strong>No sheet selected.</strong>Upload a PDF, photo, or screenshot.</div>";
+    }
+    if (els.sheetsPreviewImage) {
+      els.sheetsPreviewImage.hidden = true;
+      els.sheetsPreviewImage.removeAttribute("src");
+    }
+    if (els.sheetsPreviewPdf) {
+      els.sheetsPreviewPdf.hidden = true;
+      els.sheetsPreviewPdf.removeAttribute("src");
+    }
+    resizeSheetMarkupCanvas();
+    return;
+  }
+  const blob = await readSheetBlob(attachment.localKey);
+  if (!blob) {
+    if (els.sheetsPreviewEmpty) {
+      els.sheetsPreviewEmpty.hidden = false;
+      els.sheetsPreviewEmpty.innerHTML = "<div><strong>File not on this device.</strong>This sheet metadata is here, but the file is saved locally on another device.</div>";
+    }
+    if (els.sheetsPreviewImage) els.sheetsPreviewImage.hidden = true;
+    if (els.sheetsPreviewPdf) els.sheetsPreviewPdf.hidden = true;
+    resizeSheetMarkupCanvas();
+    return;
+  }
+  sheetPreviewUrl = URL.createObjectURL(blob);
+  if (els.sheetsPreviewEmpty) {
+    els.sheetsPreviewEmpty.hidden = true;
+    els.sheetsPreviewEmpty.innerHTML = "<div><strong>No sheet selected.</strong>Upload a PDF, photo, or screenshot.</div>";
+  }
+  if (attachment.mimeType === "application/pdf") {
+    if (els.sheetsPreviewImage) {
+      els.sheetsPreviewImage.hidden = true;
+      els.sheetsPreviewImage.removeAttribute("src");
+    }
+    if (els.sheetsPreviewPdf) {
+      els.sheetsPreviewPdf.hidden = false;
+      els.sheetsPreviewPdf.src = `${sheetPreviewUrl}#page=${activeSheetPageIndex + 1}&toolbar=0&navpanes=0&scrollbar=0`;
+    }
+  } else {
+    if (els.sheetsPreviewPdf) {
+      els.sheetsPreviewPdf.hidden = true;
+      els.sheetsPreviewPdf.removeAttribute("src");
+    }
+    if (els.sheetsPreviewImage) {
+      els.sheetsPreviewImage.hidden = false;
+      els.sheetsPreviewImage.src = sheetPreviewUrl;
+      await new Promise((resolve) => {
+        if (els.sheetsPreviewImage.complete) resolve();
+        else els.sheetsPreviewImage.addEventListener("load", resolve, { once: true });
+      });
+    }
+  }
+  resizeSheetMarkupCanvas();
+}
+
+function resizeSheetMarkupCanvas() {
+  const canvas = els.sheetsMarkupCanvas;
+  const stage = els.sheetsPreviewStage;
+  if (!canvas || !stage) return;
+  const rect = stage.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.floor(rect.width * ratio));
+  const height = Math.max(1, Math.floor(rect.height * ratio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  canvas.style.width = `${rect.width}px`;
+  canvas.style.height = `${rect.height}px`;
+  drawSheetMarkupCanvas();
+}
+
+function drawSheetMarkupCanvas(extraStroke = null) {
+  const canvas = els.sheetsMarkupCanvas;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.scale(canvas.width, canvas.height);
+  const strokes = activeSheetAttachment() ? getSheetPageStrokes(activeSheetAttachment()) : [];
+  [...strokes, extraStroke].filter(Boolean).forEach((stroke) => drawSheetStrokeOnCanvas(ctx, stroke));
+  ctx.restore();
+}
+
+function drawSheetStrokeOnCanvas(ctx, stroke) {
+  if (!stroke?.points?.length) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = stroke.color || "#d82424";
+  ctx.lineWidth = (stroke.width || 3) / Math.max(ctx.canvas.width, ctx.canvas.height, 1);
+  ctx.beginPath();
+  stroke.points.forEach(([x, y], index) => {
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.restore();
+}
+
+function sheetPointFromEvent(event) {
+  const canvas = els.sheetsMarkupCanvas;
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return [
+    clampNumber((event.clientX - rect.left) / rect.width, 0, 1),
+    clampNumber((event.clientY - rect.top) / rect.height, 0, 1),
+  ];
+}
+
+function eraseSheetStrokesAt(point) {
+  const attachment = activeSheetAttachment();
+  if (!attachment || !point) return false;
+  const strokes = getSheetPageStrokes(attachment);
+  const before = strokes.length;
+  const threshold = 0.035;
+  const remaining = strokes.filter((stroke) => !stroke.points.some(([x, y]) => Math.hypot(x - point[0], y - point[1]) < threshold));
+  attachment.annotations[String(activeSheetPageIndex)] = remaining;
+  return remaining.length !== before;
+}
+
+function beginSheetMarkup(event) {
+  if (!activeSheetAttachment()) return;
+  event.preventDefault();
+  const point = sheetPointFromEvent(event);
+  if (!point) return;
+  els.sheetsMarkupCanvas?.setPointerCapture?.(event.pointerId);
+  if (sheetTool === "eraser") {
+    recordLineupUndo();
+    sheetDrawing = { tool: "eraser", changed: eraseSheetStrokesAt(point) };
+    drawSheetMarkupCanvas();
+    return;
+  }
+  recordLineupUndo();
+  sheetDrawing = {
+    tool: "pen",
+    color: "#d82424",
+    width: 3,
+    points: [point],
+  };
+  drawSheetMarkupCanvas(sheetDrawing);
+}
+
+function moveSheetMarkup(event) {
+  if (!sheetDrawing) return;
+  event.preventDefault();
+  const point = sheetPointFromEvent(event);
+  if (!point) return;
+  if (sheetDrawing.tool === "eraser") {
+    sheetDrawing.changed = eraseSheetStrokesAt(point) || sheetDrawing.changed;
+    drawSheetMarkupCanvas();
+    return;
+  }
+  sheetDrawing.points.push(point);
+  if (sheetDrawing.points.length > importLimits.sheetPoints) sheetDrawing.points.shift();
+  drawSheetMarkupCanvas(sheetDrawing);
+}
+
+function finishSheetMarkup(event) {
+  if (!sheetDrawing) return;
+  event?.preventDefault?.();
+  const attachment = activeSheetAttachment();
+  if (attachment && sheetDrawing.tool === "pen") {
+    const stroke = normalizeSheetStroke(sheetDrawing);
+    if (stroke) getSheetPageStrokes(attachment).push(stroke);
+  }
+  const changed = sheetDrawing.tool === "pen" || sheetDrawing.changed;
+  sheetDrawing = null;
+  if (changed) {
+    if (attachment) attachment.updatedAt = new Date().toISOString();
+    saveState();
+    renderSheetsDialog();
+    renderLineup();
+    renderSongBank();
+  } else {
+    drawSheetMarkupCanvas();
+  }
+}
+
+function undoSheetMarkup() {
+  const attachment = activeSheetAttachment();
+  if (!attachment) return;
+  const strokes = getSheetPageStrokes(attachment);
+  if (!strokes.length) return;
+  recordLineupUndo();
+  strokes.pop();
+  attachment.updatedAt = new Date().toISOString();
+  saveState();
+  renderSheetsDialog();
+}
+
+function clearSheetMarkup() {
+  const attachment = activeSheetAttachment();
+  if (!attachment || !getSheetPageStrokes(attachment).length) return;
+  if (!window.confirm("Clear scribbles on this page?")) return;
+  recordLineupUndo();
+  attachment.annotations[String(activeSheetPageIndex)] = [];
+  attachment.updatedAt = new Date().toISOString();
+  saveState();
+  renderSheetsDialog();
+}
+
+function handleLineupAction(action, lineupId, songId, control = null) {
   const item = state.lineup.find((candidate) => candidate.id === lineupId);
 
   if (action === "slides" && item) {
     openSlidesForLineup(lineupId);
+    return;
+  }
+
+  if (action === "sheets" && item?.type === "song") {
+    openSheetsDialog(lineupId);
     return;
   }
 
@@ -6241,17 +7647,100 @@ function handleLineupAction(action, lineupId, songId) {
   if (action === "edit-note" && item) openNoteDialog(item);
 
   if (action === "remove") {
+    if (shouldArmMobileLineupDelete(lineupId, control)) return;
     removeLineupItem(lineupId);
   }
 }
 
+function clearPendingLineupDelete() {
+  if (pendingLineupDeleteTimer) window.clearTimeout(pendingLineupDeleteTimer);
+  pendingLineupDeleteTimer = null;
+  const activeButton = pendingLineupDeleteId
+    ? Array.from(document.querySelectorAll('[data-action="remove"][data-lineup-id]'))
+      .find((button) => button.dataset.lineupId === pendingLineupDeleteId)
+    : null;
+  if (activeButton) {
+    activeButton.classList.remove("delete-armed");
+    if (activeButton.dataset.originalTitle) activeButton.title = activeButton.dataset.originalTitle;
+    if (activeButton.dataset.originalAriaLabel) activeButton.setAttribute("aria-label", activeButton.dataset.originalAriaLabel);
+    delete activeButton.dataset.originalTitle;
+    delete activeButton.dataset.originalAriaLabel;
+  }
+  pendingLineupDeleteId = "";
+  pendingLineupDeleteArmedAt = 0;
+}
+
+function shouldArmMobileLineupDelete(lineupId, control) {
+  if (!isMobileLayout() || !lineupId) return false;
+  if (pendingLineupDeleteId === lineupId) {
+    if (Date.now() - pendingLineupDeleteArmedAt < 450) return true;
+    clearPendingLineupDelete();
+    return false;
+  }
+  clearPendingLineupDelete();
+  pendingLineupDeleteId = lineupId;
+  pendingLineupDeleteArmedAt = Date.now();
+  if (control) {
+    control.dataset.originalTitle = control.title || "Remove";
+    control.dataset.originalAriaLabel = control.getAttribute("aria-label") || "Remove";
+    control.classList.add("delete-armed");
+    control.title = "Tap again to remove";
+    control.setAttribute("aria-label", "Tap again to remove");
+  }
+  pendingLineupDeleteTimer = window.setTimeout(clearPendingLineupDelete, 4200);
+  toast("Tap trash again to remove.", { duration: 4200 });
+  return true;
+}
+
 function removeLineupItem(lineupId) {
+  const index = state.lineup.findIndex((candidate) => candidate.id === lineupId);
+  const item = state.lineup[index];
+  if (!item) return;
+  const removedItem = cloneData(item);
+  const undoShowId = state.activeShowId;
   recordLineupUndo();
-  state.lineup = state.lineup.filter((candidate) => candidate.id !== lineupId);
+  state.lineup.splice(index, 1);
   openRowId = null;
+  clearPendingLineupDelete();
   saveState();
   renderLineup();
-  toast("Item removed from lineup.");
+  showLineupRemoveUndo({ item: removedItem, index, showId: undoShowId });
+}
+
+function showLineupRemoveUndo(undoPayload) {
+  if (pendingLineupRemoveUndoTimer) window.clearTimeout(pendingLineupRemoveUndoTimer);
+  pendingLineupRemoveUndo = undoPayload;
+  pendingLineupRemoveUndoTimer = window.setTimeout(() => {
+    pendingLineupRemoveUndo = null;
+    pendingLineupRemoveUndoTimer = null;
+  }, 8000);
+  toast("Item removed.", {
+    actionLabel: "Undo",
+    duration: 8000,
+    action: restorePendingLineupRemove,
+  });
+}
+
+function restorePendingLineupRemove() {
+  if (!pendingLineupRemoveUndo) return;
+  const { item, index, showId } = pendingLineupRemoveUndo;
+  if (showId && state.activeShowId !== showId) {
+    toast("Open that setlist to undo.");
+    return;
+  }
+  if (state.lineup.some((candidate) => candidate.id === item.id)) {
+    pendingLineupRemoveUndo = null;
+    toast("That item is already back.");
+    return;
+  }
+  if (pendingLineupRemoveUndoTimer) window.clearTimeout(pendingLineupRemoveUndoTimer);
+  pendingLineupRemoveUndoTimer = null;
+  pendingLineupRemoveUndo = null;
+  recordLineupUndo();
+  state.lineup.splice(clampNumber(index, 0, state.lineup.length), 0, cloneData(item));
+  saveState();
+  renderLineup();
+  toast("Item restored.");
 }
 
 function escapeHtml(value) {
@@ -6265,11 +7754,23 @@ function escapeHtml(value) {
 }
 
 let toastTimer;
-function toast(message) {
-  els.toast.textContent = message;
+function toast(message, options = {}) {
+  els.toast.classList.remove("has-action");
+  if (options.actionLabel && typeof options.action === "function") {
+    els.toast.innerHTML = `<span>${escapeHtml(message)}</span><button type="button" data-toast-action>${escapeHtml(options.actionLabel)}</button>`;
+    els.toast.classList.add("has-action");
+    const actionButton = els.toast.querySelector("[data-toast-action]");
+    actionButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      options.action();
+    });
+  } else {
+    els.toast.textContent = message;
+  }
   els.toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2200);
+  toastTimer = setTimeout(() => els.toast.classList.remove("show"), options.duration || 2200);
 }
 
 function clampNumber(value, min, max) {
@@ -6278,8 +7779,13 @@ function clampNumber(value, min, max) {
 
 function setBankWidth(width) {
   const shellRect = els.appShell.getBoundingClientRect();
-  const maxWidth = Math.max(280, shellRect.width - 96 - 10 - 460);
-  const nextWidth = clampNumber(Math.round(width), 260, Math.min(560, maxWidth));
+  const sideBankLayout = isLandscapeSideBankLayout();
+  const minWidth = sideBankLayout ? 248 : 260;
+  const resizerWidth = sideBankLayout ? 16 : 10;
+  const maxWidth = sideBankLayout
+    ? Math.max(minWidth, shellRect.width - resizerWidth - 260)
+    : Math.max(280, shellRect.width - 96 - 10 - 460);
+  const nextWidth = clampNumber(Math.round(width), minWidth, Math.min(560, maxWidth));
   els.appShell.style.setProperty("--bank-width", `${nextWidth}px`);
   localStorage.setItem(bankWidthStorageKey, String(nextWidth));
 }
@@ -6310,7 +7816,7 @@ function bindPanelResize() {
   };
 
   els.panelResizer.addEventListener("pointerdown", (event) => {
-    if (els.appShell.classList.contains("bank-collapsed")) return;
+    if (els.appShell.classList.contains("bank-collapsed") && !isLandscapeSideBankLayout()) return;
     event.preventDefault();
     bankLeft = document.querySelector(".bank-panel").getBoundingClientRect().left;
     els.appShell.classList.add("resizing-panels");
@@ -6324,6 +7830,7 @@ function bindPanelResize() {
   window.addEventListener("resize", () => {
     const currentWidth = Number(localStorage.getItem(bankWidthStorageKey));
     if (Number.isFinite(currentWidth) && currentWidth > 0) setBankWidth(currentWidth);
+    if (isLandscapeSideBankLayout()) els.appShell.classList.remove("bank-collapsed");
     positionCoachTip();
   });
   window.addEventListener("scroll", positionCoachTip, { passive: true });
@@ -6331,6 +7838,23 @@ function bindPanelResize() {
 
 function bindEvents() {
   document.addEventListener("keydown", handleUndoRedoShortcut, true);
+  document.addEventListener("keydown", (event) => {
+    if (!els.presentationDialog?.open) return;
+    if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+      event.preventDefault();
+      movePresentation(1);
+      return;
+    }
+    if (["ArrowLeft", "PageUp"].includes(event.key)) {
+      event.preventDefault();
+      movePresentation(-1);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePresentation();
+    }
+  }, true);
 
   els.categoryFilters.addEventListener("click", (event) => {
     const bangerButton = event.target.closest("[data-banger-filter]");
@@ -6383,11 +7907,52 @@ function bindEvents() {
 
   els.toggleFiltersButton?.addEventListener("click", toggleLibraryFilters);
   els.homeButton?.addEventListener("click", handleHomeButtonClick);
+  els.homeMenuButton?.addEventListener("click", openSongleadingHome);
   els.newSongButton.addEventListener("click", () => openSongDialog());
   els.oneTimeSongButton?.addEventListener("click", () => openOneTimeSongDialog());
   els.quickAddButton.addEventListener("click", () => openQuickAddDialog());
   els.addSlideOnlyButton?.addEventListener("click", addSlideOnlyItem);
   els.slideOnlyImageInput?.addEventListener("change", attachSlideOnlyImageFromInput);
+  els.sheetFileInput?.addEventListener("change", handleSheetFileInputChange);
+  els.addSheetButton?.addEventListener("click", () => chooseSheetFiles("add"));
+  els.replaceSheetButton?.addEventListener("click", () => {
+    const attachment = activeSheetAttachment();
+    if (attachment) chooseSheetFiles("replace", attachment.id);
+  });
+  els.renameSheetButton?.addEventListener("click", renameActiveSheet);
+  els.moveSheetUpButton?.addEventListener("click", () => moveActiveSheet(-1));
+  els.moveSheetDownButton?.addEventListener("click", () => moveActiveSheet(1));
+  els.removeSheetButton?.addEventListener("click", removeActiveSheet);
+  els.sheetsList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-sheet-id]");
+    if (!button) return;
+    activeSheetId = button.dataset.sheetId;
+    activeSheetPageIndex = 0;
+    renderSheetsDialog();
+  });
+  els.prevSheetPageButton?.addEventListener("click", () => {
+    activeSheetPageIndex -= 1;
+    renderSheetsDialog();
+  });
+  els.nextSheetPageButton?.addEventListener("click", () => {
+    activeSheetPageIndex += 1;
+    renderSheetsDialog();
+  });
+  els.sheetPenButton?.addEventListener("click", () => setSheetTool("pen"));
+  els.sheetEraserButton?.addEventListener("click", () => setSheetTool("eraser"));
+  els.undoSheetMarkupButton?.addEventListener("click", undoSheetMarkup);
+  els.clearSheetMarkupButton?.addEventListener("click", clearSheetMarkup);
+  els.sheetsMarkupCanvas?.addEventListener("pointerdown", beginSheetMarkup);
+  els.sheetsMarkupCanvas?.addEventListener("pointermove", moveSheetMarkup);
+  els.sheetsMarkupCanvas?.addEventListener("pointerup", finishSheetMarkup);
+  els.sheetsMarkupCanvas?.addEventListener("pointercancel", finishSheetMarkup);
+  els.sheetsDialog?.addEventListener("close", () => {
+    if (sheetPreviewUrl) {
+      URL.revokeObjectURL(sheetPreviewUrl);
+      sheetPreviewUrl = "";
+    }
+  });
+  window.addEventListener("resize", resizeSheetMarkupCanvas);
   els.addOneTimeSongButton?.addEventListener("click", addOneTimeSongFromDialog);
   els.songTitle.addEventListener("input", () => {
     if (hasHebrewLetters(els.songTitle.value)) els.songHebrew.checked = true;
@@ -6422,26 +7987,44 @@ function bindEvents() {
   els.saveSongButton.addEventListener("click", saveSongFromDialog);
   els.showNotesForm.addEventListener("submit", saveShowNotes);
   els.teamForm.addEventListener("submit", saveTeam);
-  els.settingsThemeButton.addEventListener("click", () => {
+  els.settingsThemeButton?.addEventListener("click", () => {
     toggleTheme();
     updateSettingsDialog();
   });
-  els.skinChoiceGrid.addEventListener("click", (event) => {
+  els.skinChoiceGrid?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-skin-choice]");
     if (!button) return;
     applySkin(button.dataset.skinChoice);
     toast(`${button.querySelector("strong")?.textContent || "Skin"} skin enabled.`);
   });
+  els.accentChoiceGrid?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-accent-choice]");
+    if (!button) return;
+    applyAccent(button.dataset.accentChoice);
+    toast(`${button.textContent?.trim() || "Accent"} accent enabled.`);
+  });
   els.settingsBackupButton.addEventListener("click", downloadBackupFile);
   els.settingsRestoreButton.addEventListener("click", openBackupFile);
 
   els.savedShowsList.addEventListener("click", (event) => {
+    const chip = event.target.closest(".saved-show-chip");
+    if (chip?.dataset.showId && suppressNextSetlistClickId === chip.dataset.showId) {
+      suppressNextSetlistClickId = "";
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const checkbox = event.target.closest("[data-select-show]");
     if (checkbox) {
       const id = checkbox.dataset.selectShow;
       if (checkbox.checked) selectedSetlistIds.add(id);
       else selectedSetlistIds.delete(id);
       renderSavedShows();
+      return;
+    }
+    if (selectedSetlistIds.size && chip?.dataset.showId) {
+      event.preventDefault();
+      toggleSetlistSelection(chip.dataset.showId);
       return;
     }
     const button = event.target.closest("[data-open-show]");
@@ -6463,6 +8046,11 @@ function bindEvents() {
     moveSelectedSetlists(event.target.value);
     event.target.value = "";
   });
+  els.setlistsBackTopButton?.addEventListener("click", () => {
+    selectedSetlistIds = new Set();
+    setSidePanelMode("library");
+    renderSavedShows();
+  });
 
   els.showsTabButton.addEventListener("click", () => {
     els.headerMenu.open = false;
@@ -6481,6 +8069,7 @@ function bindEvents() {
     setSidePanelMode("shows");
   });
   els.newSetlistFolderButton?.addEventListener("click", createSetlistFolder);
+  els.setlistFolderForm?.addEventListener("submit", saveSetlistFolderFromDialog);
   els.duplicateShowButton.addEventListener("click", () => {
     if (els.savedShowsDetails) els.savedShowsDetails.open = false;
     duplicateCurrentShow();
@@ -6496,7 +8085,7 @@ function bindEvents() {
     commitShowMetaFromFields();
     els.showName.value = state.show.name;
     saveState();
-    toast("Lineup saved on this device.");
+    toast("Setlist saved on this device.");
   });
 
   els.renameShowButton?.addEventListener("click", () => {
@@ -6520,11 +8109,15 @@ function bindEvents() {
   els.accountForm?.addEventListener("submit", signInFromAccountDialog);
   els.accountSignInModeButton?.addEventListener("click", () => setAccountMode("sign-in"));
   els.accountSignUpModeButton?.addEventListener("click", () => setAccountMode("sign-up"));
+  els.accountBackButton?.addEventListener("click", showAccountChoices);
   els.accountPasswordToggle?.addEventListener("click", toggleAccountPasswordVisibility);
+  els.accountNewPasswordToggle?.addEventListener("click", () => togglePasswordFieldVisibility(els.accountNewPassword, els.accountNewPasswordToggle));
+  els.accountConfirmPasswordToggle?.addEventListener("click", () => togglePasswordFieldVisibility(els.accountConfirmPassword, els.accountConfirmPasswordToggle));
   els.accountUseCase?.addEventListener("change", updateAccountUseCaseFields);
   els.accountProfileUseCase?.addEventListener("change", updateAccountProfileUseCaseFields);
   els.accountRefreshProfileButton?.addEventListener("click", loadAccountProfileFromCloud);
   els.accountSaveProfileButton?.addEventListener("click", saveAccountProfileToCloud);
+  els.accountChangePasswordButton?.addEventListener("click", changeAccountPasswordFromDialog);
   els.accountCreateButton?.addEventListener("click", createAccountFromDialog);
   els.accountRecoverButton?.addEventListener("click", recoverPasswordFromAccountDialog);
   els.accountGuestButton?.addEventListener("click", continueAsGuest);
@@ -6532,7 +8125,7 @@ function bindEvents() {
     updateAccountDialog("Saving...");
     try {
       await saveCurrentWorkspaceToCloud();
-      updateAccountDialog("Saved this device to your account.");
+      updateAccountDialog("Saved this device to the cloud.");
     } catch (error) {
       updateAccountDialog(error instanceof Error ? error.message : "Could not save to cloud.");
     }
@@ -6597,6 +8190,23 @@ function bindEvents() {
   els.exportSlidesFromMenuButton?.addEventListener("click", (event) => {
     event.preventDefault();
     openSlidesExportDialog();
+  });
+  els.presentationMenuButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (els.headerMenu) els.headerMenu.open = false;
+    openPresentation().catch((error) => toast(error instanceof Error ? error.message : "Could not open presentation."));
+  });
+  els.slidesPresentButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    openPresentation().catch((error) => toast(error instanceof Error ? error.message : "Could not open presentation."));
+  });
+  els.presentationPrevButton?.addEventListener("click", () => movePresentation(-1));
+  els.presentationNextButton?.addEventListener("click", () => movePresentation(1));
+  els.presentationFullscreenButton?.addEventListener("click", togglePresentationFullscreen);
+  els.presentationCloseButton?.addEventListener("click", closePresentation);
+  els.presentationDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closePresentation();
   });
   els.slidePreviewToggle?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -6672,8 +8282,10 @@ function bindEvents() {
   els.slidesEditorBackButton?.addEventListener("click", () => closeSlidesEditor(true));
   els.slidesSaveScopeSelect?.addEventListener("change", (event) => setSlidesSaveScope(event.target.value));
   els.slidesCreateButton?.addEventListener("click", createSlidesFromPastedLyrics);
+  els.slidesEditFullLyricsButton?.addEventListener("click", editSlidesFullLyrics);
   els.slidesUseSongNotesButton?.addEventListener("click", fillSlidesFromSongNotes);
   els.slidesEditorPreviewButton?.addEventListener("click", previewSlidesEditorSet);
+  els.slidesEditorPresentButton?.addEventListener("click", presentSlidesEditorFullscreen);
   els.slidesEditorReadyButton?.addEventListener("click", markSlidesEditorReady);
   els.slidesAddSlideButton?.addEventListener("click", addSlidesEditorSlide);
   els.slidesUndoButton?.addEventListener("click", undoSlidesEditor);
@@ -6787,7 +8399,7 @@ function bindEvents() {
   els.songBankList.addEventListener("click", (event) => {
     const actionEl = event.target.closest("[data-action]");
     const row = event.target.closest(".bank-song");
-    if (row && !event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) {
+    if (row && !event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], [data-action='sheets'], .more-button")) {
       event.preventDefault();
       addSongToLineup(row.dataset.songId, true);
       return;
@@ -6807,6 +8419,10 @@ function bindEvents() {
       openSlidesForBankSong(songId);
       return;
     }
+    if (actionEl.dataset.action === "sheets") {
+      openLibrarySheetsDialog(songId);
+      return;
+    }
     if (actionEl.dataset.action === "edit-bank") {
       const song = state.songs.find((candidate) => candidate.id === songId);
       openSongDialog(song);
@@ -6815,7 +8431,7 @@ function bindEvents() {
 
   els.songBankList.addEventListener("keydown", (event) => {
     if (!["Enter", " "].includes(event.key)) return;
-    if (event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button")) return;
+    if (event.target.closest("[data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], [data-action='sheets'], .more-button")) return;
     const row = event.target.closest(".bank-song");
     if (!row) return;
     event.preventDefault();
@@ -6834,9 +8450,9 @@ function bindEvents() {
     const action = actionEl.dataset.action;
     const lineupId = actionEl.dataset.lineupId;
     const songId = actionEl.dataset.songId || "";
-    if (!["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "edit-slide-title", "slide-image"].includes(action)) return;
+    if (!["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "sheets", "edit-slide-title", "slide-image"].includes(action)) return;
     event.preventDefault();
-    handleLineupAction(action, lineupId, songId);
+    handleLineupAction(action, lineupId, songId, actionEl);
   });
 
   els.lineupRows.addEventListener("change", (event) => {
@@ -6967,6 +8583,28 @@ function bindEvents() {
     input.addEventListener("change", () => renderExportPreview());
   });
   els.exportFitToggle.addEventListener("change", () => renderExportPreview());
+  els.exportTabButtons?.forEach((button) => {
+    button.addEventListener("click", () => setExportTab(button.dataset.exportTab));
+  });
+  els.sheetPackSelection?.addEventListener("change", (event) => {
+    const songInput = event.target.closest("[data-sheet-export-song]");
+    if (songInput) {
+      const group = songInput.closest("[data-sheet-export-group]");
+      group?.querySelectorAll("[data-sheet-export-attachment]").forEach((input) => {
+        input.checked = songInput.checked;
+      });
+      return;
+    }
+    const attachmentInput = event.target.closest("[data-sheet-export-attachment]");
+    if (!attachmentInput) return;
+    const group = attachmentInput.closest("[data-sheet-export-group]");
+    const songToggle = group?.querySelector("[data-sheet-export-song]");
+    if (songToggle) {
+      const children = Array.from(group.querySelectorAll("[data-sheet-export-attachment]"));
+      songToggle.checked = children.some((input) => input.checked);
+    }
+  });
+  els.exportSheetPackButton?.addEventListener("click", exportSheetPackPdf);
   document.querySelectorAll("[data-close-dialog]").forEach((button) => {
     button.addEventListener("click", () => {
       const dialog = button.closest("dialog");
@@ -7005,10 +8643,11 @@ function bindCoreFallbackEvents() {
   bind(els.addNoteButton, "click", () => openNoteDialog());
   bind(els.toggleFiltersButton, "click", toggleLibraryFilters);
   bind(els.homeButton, "click", handleHomeButtonClick);
+  bind(els.homeMenuButton, "click", openSongleadingHome);
   bind(els.saveLineupButton, "click", () => {
     commitShowMetaFromFields();
     saveState();
-    toast("Lineup saved on this device.");
+    toast("Setlist saved on this device.");
   });
   bind(els.exportButton, "click", (event) => {
     event.preventDefault();
@@ -7070,7 +8709,7 @@ function bindPointerDragFallback() {
     if (mobile && !lineupRow && !bankRow) return;
     const blockedControl = event.target.closest?.("input, select, textarea, [data-close-dialog], dialog");
     if (blockedControl) return;
-    const blockedButton = event.target.closest?.("button, a, summary, [role='button'], [data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], .more-button, .icon-action, .ready-toggle");
+    const blockedButton = event.target.closest?.("button, a, summary, [role='button'], [data-action='toggle-banger'], [data-action='edit-bank'], [data-action='slides'], [data-action='sheets'], .more-button, .icon-action, .ready-toggle");
     if (blockedButton && !mobileDragHandle) return;
 
     if (bankRow) {
@@ -7175,7 +8814,7 @@ function bindMobileLibraryDrawerDrag() {
 
   const mobileLibraryHeight = () => {
     if (els.appShell.classList.contains("bank-collapsed")) {
-      return 44;
+      return Math.max(44, Math.round(els.bankPanel.getBoundingClientRect().height || 44));
     }
     return mobileLibraryExpanded ? Math.max(0, window.innerHeight - 12) : Math.min(window.innerHeight * 0.44, 430);
   };
@@ -7198,6 +8837,8 @@ function bindMobileLibraryDrawerDrag() {
     suppressPanelClick = Boolean(drag.active);
     if (!drag.active && drag.fromHeader) {
       setMobileLibraryState(mobileLibraryState === "minimized" ? "middle" : "minimized");
+    } else if (drag.fromMinimized && deltaY < -18 && finalHeight < expandedCutoff) {
+      setMobileLibraryState("middle");
     } else if (finalHeight >= expandedCutoff) {
       setMobileLibraryState("full");
     } else if (finalHeight <= minimizedCutoff) {
@@ -7213,7 +8854,6 @@ function bindMobileLibraryDrawerDrag() {
 
   els.bankPanel.addEventListener("pointerdown", (event) => {
     if (!isLibraryDrawerLayout()) return;
-    if (sidePanelMode !== "library") return;
     if (event.target.closest(".bank-song")) return;
     if (event.target.closest("button, input, select, textarea, a, summary")) return;
     const fromHeader = Boolean(event.target.closest(".bank-header") || event.target === els.bankPanel);
@@ -7223,6 +8863,7 @@ function bindMobileLibraryDrawerDrag() {
       startHeight: mobileLibraryHeight(),
       pointerId: event.pointerId,
       fromHeader,
+      fromMinimized: mobileLibraryState === "minimized" || els.appShell.classList.contains("bank-collapsed"),
       active: false,
     };
     els.bankPanel.classList.add("is-dragging");
@@ -7231,10 +8872,12 @@ function bindMobileLibraryDrawerDrag() {
 
   els.bankPanel.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    if (Math.abs(event.clientY - drag.startY) < 6) return;
+    const deltaY = event.clientY - drag.startY;
+    const activationDistance = drag.fromMinimized && deltaY < 0 ? 2 : 6;
+    if (Math.abs(deltaY) < activationDistance) return;
     drag.active = true;
     event.preventDefault();
-    setDragHeight(drag.startHeight - (event.clientY - drag.startY));
+    setDragHeight(drag.startHeight - deltaY);
   }, { passive: false });
 
   els.bankPanel.addEventListener("pointerup", finishDrag);
@@ -7253,7 +8896,13 @@ function bindMobileLibraryDrawerDrag() {
   }, true);
 
   window.addEventListener("resize", () => {
-    if (!isLibraryDrawerLayout()) setMobileLibraryExpanded(false);
+    if (!isLibraryDrawerLayout()) {
+      setMobileLibraryExpanded(false);
+      if (isLandscapeSideBankLayout()) {
+        els.appShell?.classList.remove("bank-collapsed");
+        applySidePanelMode();
+      }
+    }
   });
 }
 
@@ -7293,6 +8942,22 @@ function bindMobileTapBridge() {
   document.addEventListener("pointercancel", () => {
     tap = null;
   }, true);
+}
+
+function bindMobileDeleteConfirmCancel() {
+  if (document.body.dataset.mobileDeleteConfirmBound) return;
+  document.body.dataset.mobileDeleteConfirmBound = "true";
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!pendingLineupDeleteId) return;
+    const removeButton = event.target.closest?.('[data-action="remove"][data-lineup-id]');
+    if (removeButton?.dataset.lineupId === pendingLineupDeleteId) return;
+    clearPendingLineupDelete();
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") clearPendingLineupDelete();
+  });
 }
 
 function bindEmergencyButtonDelegates() {
@@ -7358,7 +9023,7 @@ function bindEmergencyButtonDelegates() {
 
       if (control.id === "mobileAddFirstSongButton") {
         handled();
-        openMobileLibraryDrawer(false);
+        handleAddFirstSongAction();
         return;
       }
 
@@ -7386,6 +9051,18 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
+      if (control.id === "accountBackButton") {
+        handled();
+        showAccountChoices();
+        return;
+      }
+
+      if (control.id === "accountChangePasswordButton") {
+        handled();
+        changeAccountPasswordFromDialog();
+        return;
+      }
+
       if (control.id === "accountSubmitButton") {
         handled();
         signInFromAccountDialog(event);
@@ -7403,7 +9080,7 @@ function bindEmergencyButtonDelegates() {
         handled();
         commitShowMetaFromFields();
         saveState();
-        toast("Lineup saved on this device.");
+        toast("Setlist saved on this device.");
         return;
       }
 
@@ -7432,6 +9109,12 @@ function bindEmergencyButtonDelegates() {
         return;
       }
 
+      if (control.id === "slidesEditFullLyricsButton") {
+        handled();
+        editSlidesFullLyrics();
+        return;
+      }
+
       if (control.id === "slidesUseSongNotesButton") {
         handled();
         fillSlidesFromSongNotes();
@@ -7441,6 +9124,12 @@ function bindEmergencyButtonDelegates() {
       if (control.id === "slidesEditorPreviewButton") {
         handled();
         previewSlidesEditorSet();
+        return;
+      }
+
+      if (control.id === "slidesEditorPresentButton") {
+        handled();
+        presentSlidesEditorFullscreen();
         return;
       }
 
@@ -7676,7 +9365,23 @@ function bindEmergencyButtonDelegates() {
 
       if (control.matches("[data-show-id]")) {
         handled();
+        if (suppressNextSetlistClickId === control.dataset.showId) {
+          suppressNextSetlistClickId = "";
+          return;
+        }
+        if (selectedSetlistIds.size) {
+          toggleSetlistSelection(control.dataset.showId);
+          return;
+        }
         switchShow(control.dataset.showId);
+        return;
+      }
+
+      if (control.id === "setlistsBackTopButton") {
+        handled();
+        selectedSetlistIds = new Set();
+        setSidePanelMode("library");
+        renderSavedShows();
         return;
       }
 
@@ -7684,6 +9389,12 @@ function bindEmergencyButtonDelegates() {
         handled();
         createNewShow();
         setSidePanelMode("shows");
+        return;
+      }
+
+      if (control.id === "newSetlistFolderButton") {
+        handled();
+        createSetlistFolder();
         return;
       }
 
@@ -7696,7 +9407,7 @@ function bindEmergencyButtonDelegates() {
 
       if (control.id === "deleteShowButton") {
         handled();
-        deleteCurrentShow();
+        deleteSelectedSetlists();
         setSidePanelMode("shows");
         return;
       }
@@ -7753,8 +9464,13 @@ function bindEmergencyButtonDelegates() {
           return;
         }
 
-        if (["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "edit-slide-title", "slide-image"].includes(action)) {
-          handleLineupAction(action, lineupId, songId || "");
+        if (action === "sheets" && !lineupId) {
+          openLibrarySheetsDialog(songId);
+          return;
+        }
+
+        if (["ready", "info", "remove", "edit-note", "edit-lineup-note", "slides", "sheets", "edit-slide-title", "slide-image"].includes(action)) {
+          handleLineupAction(action, lineupId, songId || "", control);
           return;
         }
       }
@@ -7840,7 +9556,7 @@ function bindEmergencyButtonDelegates() {
   document.addEventListener(
     "submit",
     (event) => {
-      if (![els.songForm, els.quickAddForm, els.noteForm, els.showNotesForm, els.teamForm].includes(event.target)) return;
+      if (![els.songForm, els.quickAddForm, els.noteForm, els.showNotesForm, els.teamForm, els.setlistFolderForm].includes(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation?.();
@@ -7867,6 +9583,11 @@ function bindEmergencyButtonDelegates() {
 
       if (event.target === els.teamForm) {
         saveTeam(event);
+        return;
+      }
+
+      if (event.target === els.setlistFolderForm) {
+        saveSetlistFolderFromDialog(event);
       }
     },
     true
@@ -7875,6 +9596,7 @@ function bindEmergencyButtonDelegates() {
 
 
 function startApp() {
+  applyInstalledShellMode();
   if (isMobileLayout()) {
     finishIntro();
     closeOnboardingTips(true);
@@ -7886,8 +9608,10 @@ function startApp() {
   bindCoreFallbackEvents();
   bindOnboardingControlEvents();
   bindMobileTapBridge();
+  bindMobileDeleteConfirmCancel();
   bindPointerDragFallback();
   bindMobileLibraryDrawerDrag();
+  bindSetlistLongPressSelection();
 
   try {
     populateFormOptions();
@@ -7902,10 +9626,11 @@ function startApp() {
     render();
     applyTheme(localStorage.getItem(themeStorageKey) || "dark");
     applySkin(localStorage.getItem(skinStorageKey) || "simple");
+    applyAccent(localStorage.getItem(accentStorageKey) || "blue");
 
     if (importedSharedLineup) {
       finishIntro();
-      toast("Shared lineup opened safely and saved here.");
+      toast("Shared setlist opened safely and saved here.");
       history.replaceState(null, "", window.location.href.split("#")[0]);
       ensureSignedInForApp().then((allowed) => {
         if (allowed && !isMobileLayout()) maybeShowOnboardingTips();
@@ -7922,5 +9647,7 @@ function startApp() {
     toast("Something blocked the app from starting. Refresh once, and if it stays stuck tell me.");
   }
 }
+
+window.addEventListener("lineup-native-ready", applyInstalledShellMode);
 
 startApp();

@@ -1,6 +1,7 @@
 "use client";
 
 import type { DesignSettings, LyricSlide } from "@/types/song";
+import { fitLyricFontSize } from "@/lib/slideTextFit";
 
 function hexToRgb(hex: string) {
   const clean = hex.replace("#", "");
@@ -29,14 +30,6 @@ function escapeXml(value: string) {
 
 function emu(inches: number) {
   return Math.round(inches * 914400);
-}
-
-function fitFont(slide: LyricSlide, design: DesignSettings) {
-  const lineCount = Math.max(1, slide.lines.length);
-  const maxChars = Math.max(12, ...slide.lines.map((line) => line.text.length));
-  const heightFit = Math.max(26, Math.min(110, 72 / Math.max(1, lineCount * design.lineSpacing)));
-  const widthFit = Math.max(24, Math.min(96, 124 / Math.sqrt(maxChars)));
-  return Math.max(24, Math.min(design.fontSize, heightFit, widthFit));
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -111,7 +104,12 @@ function drawSlideToCanvas(
   drawBackground(context, design, page.width, page.height);
   const { x, marginX, marginY, boxW } = slideTextBox(design, page.width, page.height);
   const lines = slide.lines.length ? slide.lines.map((line) => line.text || " ") : ["No lyrics selected"];
-  const fontSize = Math.max(12, design.fontSize);
+  const fontSize = Math.max(12, fitLyricFontSize(lines, design, {
+    maxFont: design.fontSize,
+    minFont: 12,
+    reserveTop: design.showSongTitle ? 42 : 0,
+    reserveBottom: design.showCopyrightFooter ? 28 : 0
+  }));
   const lineHeight = fontSize * design.lineSpacing;
   const textHeight = lines.length * lineHeight;
   const startY =
@@ -136,7 +134,7 @@ function drawSlideToCanvas(
   }
 
   lines.forEach((line, index) => {
-    context.fillText(line, textX, startY + index * lineHeight, boxW);
+    context.fillText(line, textX, startY + index * lineHeight);
   });
 
   if (design.showSlideNumbers) {

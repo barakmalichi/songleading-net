@@ -27,6 +27,7 @@ import type { DesignSettings, SavedFlow, Section, SelectedSectionInstance, Song 
 import { createId } from "@/lib/id";
 import { parseLyrics } from "@/lib/lyricsParser";
 import { defaultFlowFromSections, flattenFlow, generateSlides } from "@/lib/slideGenerator";
+import { fitDeckFontSize } from "@/lib/slideTextFit";
 import { defaultDesignSettings } from "@/lib/themes";
 import { useStudio } from "./StudioProvider";
 import { DesignControls } from "./DesignControls";
@@ -40,8 +41,6 @@ type EditorSnapshot = {
   slideBreaks: string[];
   design: DesignSettings;
 };
-
-type GeneratedSlides = ReturnType<typeof generateSlides>;
 
 function editorSignature(
   draft: Song,
@@ -57,24 +56,6 @@ function editorSignature(
     design,
     flowName
   });
-}
-
-function fitLyricsFontSize(slides: GeneratedSlides, design: DesignSettings) {
-  const baseWidth = design.aspectRatio === "4:3" ? 960 : 1280;
-  const baseHeight = 720;
-  const marginScale = Math.max(0.35, 1 - (design.margins * 2) / 100);
-  const usableWidth = baseWidth * 0.8 * (design.textBoxWidth / 100) * marginScale;
-  const usableHeight = baseHeight * 0.8 * marginScale;
-  const sizes = slides.map((slide) => {
-    const lines = slide.lines.length ? slide.lines.map((line) => line.text || " ") : [" "];
-    const longestLine = Math.max(1, ...lines.map((line) => line.length));
-    const lineCount = Math.max(1, lines.length);
-    const widthFit = usableWidth / Math.max(1, longestLine * 0.56);
-    const heightFit = usableHeight / Math.max(1, lineCount * design.lineSpacing);
-    return Math.min(widthFit, heightFit);
-  });
-
-  return Math.round(Math.max(18, Math.min(180, Math.min(...sizes))));
 }
 
 export function SongEditor({
@@ -191,9 +172,23 @@ export function SongEditor({
 
   function detectSections() {
     const sections = parseLyrics(draft.lyricsRaw, draft.id);
+    const nextFlow = defaultFlowFromSections(sections);
+    const nextDesign: DesignSettings = {
+      ...design,
+      textBoxWidth: 100,
+      margins: 2,
+      lineSpacing: 1.03,
+      verticalPlacement: "center",
+      horizontalPlacement: "center"
+    };
+    const nextSlides = generateSlides(draft.title, sections, nextFlow, []);
     commit({ ...draft, sections, updatedAt: new Date().toISOString() });
-    setFlow(defaultFlowFromSections(sections));
+    setFlow(nextFlow);
     setSlideBreaks([]);
+    setDesign({
+      ...nextDesign,
+      fontSize: fitDeckFontSize(nextSlides, nextDesign, { maxFont: 320, minFont: 18 })
+    });
     setActiveSlide(0);
   }
 
@@ -645,21 +640,21 @@ export function SongEditor({
   }
 
   function changeFont(delta: number) {
-    updateDesign({ ...design, fontSize: Math.max(12, Math.min(180, design.fontSize + delta)) });
+    updateDesign({ ...design, fontSize: Math.max(12, Math.min(320, design.fontSize + delta)) });
   }
 
   function fitFontToScreen() {
     const nextDesign: DesignSettings = {
       ...design,
-      textBoxWidth: 94,
-      margins: 4,
-      lineSpacing: 1.06,
+      textBoxWidth: 100,
+      margins: 2,
+      lineSpacing: 1.03,
       verticalPlacement: "center",
       horizontalPlacement: "center"
     };
     updateDesign({
       ...nextDesign,
-      fontSize: fitLyricsFontSize(slides, nextDesign)
+      fontSize: fitDeckFontSize(slides, nextDesign, { maxFont: 320, minFont: 18 })
     });
   }
 
@@ -801,11 +796,11 @@ export function SongEditor({
                   onClick={() => setDraft({ ...draft, lyricsRaw: rebuildRawLyricsFromSlides(), sections: [] })}
                   className="quiet-button"
                 >
-                  Raw lyrics
+                  Edit full lyrics
                 </button>
               ) : (
                 <button type="button" onClick={detectSections} className="primary-button">
-                  Detect
+                  Create slides
                 </button>
               )}
             </div>
@@ -897,7 +892,7 @@ export function SongEditor({
                   onClick={connectActiveSlideWithPrevious}
                   className="small-button disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <Merge size={14} /> Join previous
+                  <Merge size={14} /> Merge with previous
                 </button>
                 <button
                   type="button"
@@ -905,7 +900,7 @@ export function SongEditor({
                   onClick={connectActiveSlideWithNext}
                   className="small-button disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <Merge size={14} /> Join next
+                  <Merge size={14} /> Merge with next
                 </button>
                 <button type="button" onClick={() => setDrawer("slide")} className="quiet-button">
                   Edit

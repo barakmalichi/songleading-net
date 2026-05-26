@@ -31,6 +31,9 @@ try {
   if ((storedTheme && storedTheme === "dark") || (!storedTheme && prefersDark)) {
     document.documentElement.dataset.siteTheme = "dark";
   }
+  if (/Android/i.test(window.navigator.userAgent) && window.matchMedia("(pointer: coarse)").matches) {
+    document.documentElement.classList.add("android-touch");
+  }
 } catch (error) {}
 `;
 

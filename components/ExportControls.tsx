@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, FileType2, Maximize2, Presentation } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DesignSettings, LyricSlide } from "@/types/song";
 import { SlidePreview } from "./SlidePreview";
 import { exportSlidesAsPdf, exportSlidesAsPptx } from "@/lib/exportDeck";
@@ -21,6 +21,7 @@ export function ExportControls({
   const [isPresenting, setIsPresenting] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "pptx" | null>(null);
   const [error, setError] = useState("");
+  const presentStageRef = useRef<HTMLDivElement | null>(null);
   const activeSlide = slides[presentIndex] ?? slides[0];
 
   useEffect(() => {
@@ -41,16 +42,22 @@ export function ExportControls({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isPresenting, slides.length]);
 
-  async function present() {
+  async function present(fullscreen = false) {
     setPresentIndex(0);
     setIsPresenting(true);
     setError("");
+    if (fullscreen) {
+      try {
+        await presentStageRef.current?.requestFullscreen?.();
+      } catch {
+        setError("Fullscreen was blocked by the browser. Use the Fullscreen button in the presenter.");
+      }
+    }
   }
 
   async function enterFullscreen() {
-    const element = document.getElementById("present-stage");
     try {
-      await element?.requestFullscreen?.();
+      await presentStageRef.current?.requestFullscreen?.();
     } catch {
       setError("Fullscreen was blocked by the browser.");
     }
@@ -84,8 +91,8 @@ export function ExportControls({
 
   return (
     <div className="flex flex-wrap gap-2">
-      <button type="button" onClick={present} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">
-        <Presentation size={16} /> Present
+      <button type="button" onClick={() => present(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800">
+        <Presentation size={16} /> Present fullscreen
       </button>
       <button type="button" onClick={exportPptx} disabled={Boolean(exporting)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-50 hover:bg-slate-50">
         <FileType2 size={16} /> {exporting === "pptx" ? "Exporting..." : "PowerPoint"}
@@ -96,6 +103,7 @@ export function ExportControls({
       {error && <div className="flex items-center text-sm font-bold text-rose-600">{error}</div>}
       <div
         id="present-stage"
+        ref={presentStageRef}
         className={`present-stage fixed inset-0 z-50 grid place-items-center bg-black p-6 transition ${
           isPresenting ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}

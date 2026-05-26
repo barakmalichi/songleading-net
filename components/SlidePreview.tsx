@@ -1,6 +1,7 @@
 "use client";
 
 import type { DesignSettings, LyricSlide } from "@/types/song";
+import { fitLyricFontSize, slideLineTexts } from "@/lib/slideTextFit";
 
 function placementClass(value: DesignSettings["verticalPlacement"] | DesignSettings["horizontalPlacement"], axis: "x" | "y") {
   if (axis === "y") {
@@ -43,7 +44,13 @@ export function SlidePreview({
     fontFamily: design.fontFamily,
     containerType: "inline-size"
   };
-  const fontSize = isThumb ? Math.max(7, design.fontSize / 5.3) : Math.max(12, design.fontSize);
+  const fittedFontSize = fitLyricFontSize(slideLineTexts(slide), design, {
+    maxFont: design.fontSize,
+    minFont: isThumb ? 7 : 12,
+    reserveTop: design.showSongTitle ? 42 : 0,
+    reserveBottom: design.showCopyrightFooter ? 28 : 0
+  });
+  const fontSize = isThumb ? Math.max(7, fittedFontSize / 5.3) : Math.max(12, fittedFontSize);
 
   return (
     <div
@@ -73,11 +80,13 @@ export function SlidePreview({
           </div>
         )}
         <div
-          className="whitespace-pre-wrap"
+          className="whitespace-pre"
           style={{
             fontSize,
             fontWeight: design.fontWeight,
-            lineHeight: design.lineSpacing
+            lineHeight: design.lineSpacing,
+            overflowWrap: "normal",
+            wordBreak: "normal"
           }}
         >
           {slide.lines.length ? slide.lines.map((line) => line.text).join("\n") : "No lyrics selected"}

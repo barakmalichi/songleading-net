@@ -4,6 +4,16 @@ import { useEffect } from "react";
 
 export function HomeScrollEffects() {
   useEffect(() => {
+    const isAndroidTouch = /Android/i.test(window.navigator.userAgent) &&
+      window.matchMedia("(pointer: coarse)").matches;
+    document.documentElement.classList.toggle("android-touch", isAndroidTouch);
+
+    if (isAndroidTouch) {
+      return () => {
+        document.documentElement.classList.remove("android-touch");
+      };
+    }
+
     const observedSections = new Set<HTMLElement>();
     const getBuildThreshold = () => (window.matchMedia("(max-width: 760px)").matches ? 0.18 : 0.34);
     const snapMedia = window.matchMedia("(min-width: 900px) and (pointer: fine) and (hover: hover)");

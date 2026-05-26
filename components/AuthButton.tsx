@@ -137,6 +137,16 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
   }, [initialMode, openMode]);
 
   useEffect(() => {
+    function handleOpen(event: Event) {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      const requestedMode = detail?.mode === "sign-up" ? "sign-up" : detail?.mode === "signed-in" ? "signed-in" : "sign-in";
+      openMode(session ? "signed-in" : requestedMode);
+    }
+    window.addEventListener("songleading-auth-open", handleOpen);
+    return () => window.removeEventListener("songleading-auth-open", handleOpen);
+  }, [openMode, session]);
+
+  useEffect(() => {
     if (mode === "closed" || typeof document === "undefined") return;
     document.body.classList.add("account-dialog-open");
     return () => document.body.classList.remove("account-dialog-open");
@@ -227,6 +237,7 @@ export function AuthButton({ initialMode = "closed" }: AuthButtonProps) {
       hydrateProfile(nextSession);
       setPassword("");
       setMessage("Your cloud workspace is active. Changes save automatically.");
+      window.dispatchEvent(new CustomEvent("songleading-auth-signed-in", { detail: nextSession }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign in.");
     } finally {
